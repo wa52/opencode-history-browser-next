@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenCode History</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div>
+            <h1>OpenCode</h1>
+            <p>History</p>
+          </div>
+          <button id="refresh" title="刷新">↻</button>
+        </div>
+        <input id="search" class="search" placeholder="搜索历史、项目、ID" />
+        <div id="sessionList" class="session-list"></div>
+      </aside>
+      <section class="chat">
+        <header class="chat-header">
+          <div>
+            <input id="titleInput" class="title-input" disabled />
+            <div id="meta" class="meta"></div>
+          </div>
+          <div class="actions">
+            <button id="pinBtn" disabled>置顶</button>
+            <button id="renameBtn" disabled>重命名</button>
+            <button id="openBtn" class="primary" disabled>继续聊天</button>
+          </div>
+        </header>
+        <div id="empty" class="empty">
+          <h2>选择一条历史聊天</h2>
+          <p>左侧像 ChatGPT 一样浏览所有 OpenCode 会话，支持搜索、置顶和重命名。</p>
+        </div>
+        <div id="messages" class="messages"></div>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
