@@ -69,16 +69,35 @@ function renderCurrent() {
   $("renameBtn").disabled = !current;
   $("deleteBtn").disabled = !current;
   $("openBtn").disabled = !current;
+  $("composerContinue").disabled = !current;
+  $("sideContinue").disabled = !current;
+  $("sidePin").disabled = !current;
+  $("sideRename").disabled = !current;
+  $("sideDelete").disabled = !current;
   $("renameBtn").textContent = "Rename";
 
   if (!current) {
     $("meta").textContent = "No chat selected";
     $("pinBtn").textContent = "Pin";
+    $("sidePin").textContent = "Pin";
+    $("detailStatus").textContent = "New chat";
+    $("detailFolder").textContent = "-";
+    $("detailUpdated").textContent = "-";
+    $("detailModel").textContent = "-";
+    $("detailTokens").textContent = "-";
+    $("detailId").textContent = "-";
     return;
   }
 
   $("pinBtn").textContent = current.pinned ? "Unpin" : "Pin";
+  $("sidePin").textContent = current.pinned ? "Unpin" : "Pin";
   $("meta").textContent = `${fmtTime(current.updated)} | ${shortPath(current.directory)} | ${current.id}`;
+  $("detailStatus").textContent = current.pinned ? "Pinned history" : "History";
+  $("detailFolder").textContent = current.directory || "-";
+  $("detailUpdated").textContent = fmtTime(current.updated);
+  $("detailModel").textContent = current.model || current.agent || "-";
+  $("detailTokens").textContent = `${current.tokensInput || 0} in / ${current.tokensOutput || 0} out`;
+  $("detailId").textContent = current.id;
 
   for (const message of current.messages) {
     if (!message.text && !message.extras.length) continue;
@@ -173,6 +192,11 @@ $("pinBtn").onclick = togglePin;
 $("renameBtn").onclick = rename;
 $("deleteBtn").onclick = deleteCurrent;
 $("openBtn").onclick = openCurrent;
+$("composerContinue").onclick = openCurrent;
+$("sideContinue").onclick = openCurrent;
+$("sidePin").onclick = togglePin;
+$("sideRename").onclick = rename;
+$("sideDelete").onclick = deleteCurrent;
 $("search").addEventListener("input", () => {
   clearTimeout(window.__searchTimer);
   window.__searchTimer = setTimeout(loadSessions, 180);
