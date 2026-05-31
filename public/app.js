@@ -65,20 +65,14 @@ function renderCurrent() {
   $("messages").innerHTML = "";
   $("titleInput").disabled = true;
   $("titleInput").value = current?.title || "New chat";
-  $("pinBtn").disabled = !current;
-  $("renameBtn").disabled = !current;
-  $("deleteBtn").disabled = !current;
-  $("openBtn").disabled = !current;
   $("composerContinue").disabled = !current;
   $("sideContinue").disabled = !current;
   $("sidePin").disabled = !current;
   $("sideRename").disabled = !current;
   $("sideDelete").disabled = !current;
-  $("renameBtn").textContent = "Rename";
 
   if (!current) {
     $("meta").textContent = "No chat selected";
-    $("pinBtn").textContent = "Pin";
     $("sidePin").textContent = "Pin";
     $("detailStatus").textContent = "New chat";
     $("detailFolder").textContent = "-";
@@ -89,7 +83,6 @@ function renderCurrent() {
     return;
   }
 
-  $("pinBtn").textContent = current.pinned ? "Unpin" : "Pin";
   $("sidePin").textContent = current.pinned ? "Unpin" : "Pin";
   $("meta").textContent = `${fmtTime(current.updated)} | ${shortPath(current.directory)} | ${current.id}`;
   $("detailStatus").textContent = current.pinned ? "Pinned history" : "History";
@@ -132,7 +125,7 @@ async function rename() {
     $("titleInput").disabled = false;
     $("titleInput").focus();
     $("titleInput").select();
-    $("renameBtn").textContent = "Save";
+    $("sideRename").textContent = "Save";
     return;
   }
   const title = $("titleInput").value.trim();
@@ -142,7 +135,7 @@ async function rename() {
   });
   current.title = title;
   renameMode = false;
-  $("renameBtn").textContent = "Rename";
+  $("sideRename").textContent = "Rename";
   await loadSessions();
   renderCurrent();
 }
@@ -186,12 +179,7 @@ function escapeHtml(value) {
 }
 
 $("refresh").onclick = loadSessions;
-$("newBtn").onclick = newChat;
 $("openNewBtn").onclick = openNew;
-$("pinBtn").onclick = togglePin;
-$("renameBtn").onclick = rename;
-$("deleteBtn").onclick = deleteCurrent;
-$("openBtn").onclick = openCurrent;
 $("composerContinue").onclick = openCurrent;
 $("sideContinue").onclick = openCurrent;
 $("sidePin").onclick = togglePin;

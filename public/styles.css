@@ -195,8 +195,7 @@ button:disabled {
   background: rgba(255, 255, 255, 0.9);
   padding: 10px 14px;
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-start;
   align-items: center;
   flex: 0 0 auto;
 }
@@ -230,13 +229,6 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 70vw;
-}
-
-.actions {
-  display: flex;
-  gap: 7px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
 }
 
 .chat-body {
