@@ -4,13 +4,10 @@ let sessions = [];
 let current = null;
 let renameMode = false;
 
-const fmtTime = (ms) => {
-  if (!ms) return "未知时间";
-  return new Date(ms).toLocaleString();
-};
+const fmtTime = (ms) => (ms ? new Date(ms).toLocaleString() : "Unknown time");
 
 const shortPath = (path) => {
-  if (!path) return "未知目录";
+  if (!path) return "Unknown folder";
   const parts = path.replaceAll("\\", "/").split("/").filter(Boolean);
   return parts.length <= 2 ? path : parts.slice(-2).join("/");
 };
@@ -21,7 +18,7 @@ const request = async (url, options) => {
     ...options,
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "请求失败");
+  if (!res.ok) throw new Error(data.error || "Request failed");
   return data;
 };
 
@@ -30,7 +27,6 @@ async function loadSessions() {
   const data = await request(`/api/sessions?q=${encodeURIComponent(q)}`);
   sessions = data.sessions;
   renderSessions();
-  if (!current && sessions.length) selectSession(sessions[0].id);
 }
 
 function renderSessions() {
@@ -41,9 +37,9 @@ function renderSessions() {
     item.onclick = () => selectSession(session.id);
     const preview = session.preview?.[0]?.text || session.directory || "";
     item.innerHTML = `
-      <div class="session-title">${session.pinned ? "<span>★</span>" : ""}<span>${escapeHtml(session.title || "Untitled")}</span></div>
+      <div class="session-title">${session.pinned ? "<span class=\"pin\">Pinned</span>" : ""}<span>${escapeHtml(session.title || "Untitled")}</span></div>
       <div class="session-preview">${escapeHtml(preview)}</div>
-      <div class="session-time">${fmtTime(session.updated)} · ${escapeHtml(shortPath(session.directory))}</div>
+      <div class="session-time">${fmtTime(session.updated)} | ${escapeHtml(shortPath(session.directory))}</div>
     `;
     $("sessionList").appendChild(item);
   }
@@ -57,28 +53,41 @@ async function selectSession(id) {
   renderCurrent();
 }
 
+function newChat() {
+  current = null;
+  renameMode = false;
+  renderSessions();
+  renderCurrent();
+}
+
 function renderCurrent() {
-  $("empty").style.display = current ? "none" : "block";
+  $("empty").style.display = current ? "none" : "grid";
   $("messages").innerHTML = "";
   $("titleInput").disabled = true;
-  $("titleInput").value = current?.title || "";
+  $("titleInput").value = current?.title || "New chat";
   $("pinBtn").disabled = !current;
   $("renameBtn").disabled = !current;
   $("openBtn").disabled = !current;
-  if (!current) return;
+  $("renameBtn").textContent = "Rename";
 
-  $("pinBtn").textContent = current.pinned ? "取消置顶" : "置顶";
-  $("meta").textContent = `${fmtTime(current.updated)} · ${shortPath(current.directory)} · ${current.id}`;
+  if (!current) {
+    $("meta").textContent = "No chat selected";
+    $("pinBtn").textContent = "Pin";
+    return;
+  }
+
+  $("pinBtn").textContent = current.pinned ? "Unpin" : "Pin";
+  $("meta").textContent = `${fmtTime(current.updated)} | ${shortPath(current.directory)} | ${current.id}`;
 
   for (const message of current.messages) {
     if (!message.text && !message.extras.length) continue;
     const node = document.createElement("article");
     node.className = `message ${message.role}`;
     node.innerHTML = `
-      <div class="role">${message.role === "user" ? "你" : "OpenCode"}</div>
+      <div class="role">${message.role === "user" ? "You" : "OpenCode"}</div>
       <div class="bubble">
         ${escapeHtml(message.text || "")}
-        ${message.extras.length ? `<div class="extra">${escapeHtml(message.extras.join(" · "))}</div>` : ""}
+        ${message.extras.length ? `<div class="extra">${escapeHtml(message.extras.join(" | "))}</div>` : ""}
       </div>
     `;
     $("messages").appendChild(node);
@@ -103,7 +112,7 @@ async function rename() {
     $("titleInput").disabled = false;
     $("titleInput").focus();
     $("titleInput").select();
-    $("renameBtn").textContent = "保存";
+    $("renameBtn").textContent = "Save";
     return;
   }
   const title = $("titleInput").value.trim();
@@ -113,7 +122,7 @@ async function rename() {
   });
   current.title = title;
   renameMode = false;
-  $("renameBtn").textContent = "重命名";
+  $("renameBtn").textContent = "Rename";
   await loadSessions();
   renderCurrent();
 }
@@ -123,7 +132,15 @@ async function openCurrent() {
   const data = await request(`/api/sessions/${encodeURIComponent(current.id)}/open`, { method: "POST" });
   if (!data.ok) {
     await navigator.clipboard.writeText(data.command);
-    alert(`已复制命令：${data.command}`);
+    alert(`Copied command: ${data.command}`);
+  }
+}
+
+async function openNew() {
+  const data = await request("/api/open-new", { method: "POST" });
+  if (!data.ok) {
+    await navigator.clipboard.writeText(data.command);
+    alert(`Copied command: ${data.command}`);
   }
 }
 
@@ -136,6 +153,8 @@ function escapeHtml(value) {
 }
 
 $("refresh").onclick = loadSessions;
+$("newBtn").onclick = newChat;
+$("openNewBtn").onclick = openNew;
 $("pinBtn").onclick = togglePin;
 $("renameBtn").onclick = rename;
 $("openBtn").onclick = openCurrent;
@@ -147,6 +166,7 @@ $("titleInput").addEventListener("keydown", (event) => {
   if (event.key === "Enter") rename();
 });
 
+renderCurrent();
 loadSessions().catch((error) => {
-  $("empty").innerHTML = `<h2>读取失败</h2><p>${escapeHtml(error.message)}</p>`;
+  $("empty").innerHTML = `<div class="new-chat-box"><div class="new-chat-title">Load failed</div><p>${escapeHtml(error.message)}</p></div>`;
 });

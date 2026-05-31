@@ -215,6 +215,19 @@ def open_session(session):
     return True
 
 
+def open_new_chat():
+    command = f"& '{OPENCODE_CMD}'"
+    if sys.platform == "win32":
+        subprocess.Popen(
+            ["powershell.exe", "-NoExit", "-Command", command],
+            cwd=str(HOME),
+            creationflags=subprocess.CREATE_NEW_CONSOLE,
+        )
+    else:
+        return False
+    return True
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -250,6 +263,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json({"error": "Session not found"}, status=404)
             ok = open_session(session)
             return self.json({"ok": ok, "command": f"opencode --session {session_id}"})
+        if parsed.path == "/api/open-new":
+            ok = open_new_chat()
+            return self.json({"ok": ok, "command": "opencode"})
         return self.json({"error": "Not found"}, status=404)
 
     def read_json(self):

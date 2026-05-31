@@ -11,30 +11,37 @@
       <aside class="sidebar">
         <div class="brand">
           <div>
-            <h1>OpenCode</h1>
-            <p>History</p>
+            <h1>History</h1>
+            <p>OpenCode chats</p>
           </div>
-          <button id="refresh" title="刷新">↻</button>
+          <button id="refresh" title="Refresh">Refresh</button>
         </div>
-        <input id="search" class="search" placeholder="搜索历史、项目、ID" />
+        <input id="search" class="search" placeholder="Search chats" />
         <div id="sessionList" class="session-list"></div>
       </aside>
+
       <section class="chat">
         <header class="chat-header">
-          <div>
-            <input id="titleInput" class="title-input" disabled />
-            <div id="meta" class="meta"></div>
+          <div class="chat-title-wrap">
+            <input id="titleInput" class="title-input" value="New chat" disabled />
+            <div id="meta" class="meta">No chat selected</div>
           </div>
           <div class="actions">
-            <button id="pinBtn" disabled>置顶</button>
-            <button id="renameBtn" disabled>重命名</button>
-            <button id="openBtn" class="primary" disabled>继续聊天</button>
+            <button id="newBtn">New</button>
+            <button id="pinBtn" disabled>Pin</button>
+            <button id="renameBtn" disabled>Rename</button>
+            <button id="openBtn" class="primary" disabled>Continue</button>
           </div>
         </header>
+
         <div id="empty" class="empty">
-          <h2>选择一条历史聊天</h2>
-          <p>左侧像 ChatGPT 一样浏览所有 OpenCode 会话，支持搜索、置顶和重命名。</p>
+          <div class="new-chat-box">
+            <div class="new-chat-title">New chat</div>
+            <p>Select a history item on the left, or continue in OpenCode normally.</p>
+            <button id="openNewBtn" class="primary">Open OpenCode</button>
+          </div>
         </div>
+
         <div id="messages" class="messages"></div>
       </section>
     </main>

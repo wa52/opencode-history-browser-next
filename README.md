@@ -40,6 +40,14 @@ Aliases:
 
 ## Local development
 
+Double-click:
+
+```text
+D:\codex\opencode-history-browser\open-history-browser.cmd
+```
+
+Or run:
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File D:\codex\opencode-history-browser\start.ps1
 ```

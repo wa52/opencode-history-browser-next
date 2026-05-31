@@ -1,15 +1,14 @@
 :root {
-  --bg: #f6f4ef;
-  --panel: #fffdf8;
-  --panel-2: #ece8de;
-  --text: #22201c;
-  --muted: #746f65;
-  --line: #d9d2c4;
+  --bg: #f7f7f4;
+  --panel: #ffffff;
+  --panel-2: #f0f0ec;
+  --text: #20201d;
+  --muted: #74746c;
+  --line: #ddddd5;
   --accent: #0f766e;
-  --accent-2: #14532d;
-  --user: #e8f4f2;
+  --user: #eef7f5;
   --assistant: #ffffff;
-  --shadow: 0 16px 50px rgba(44, 38, 28, 0.12);
+  --shadow: 0 8px 24px rgba(25, 25, 20, 0.08);
 }
 
 * {
@@ -20,7 +19,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: "Segoe UI", Arial, sans-serif;
+  font: 14px/1.45 "Segoe UI", Arial, sans-serif;
 }
 
 button,
@@ -33,13 +32,17 @@ button {
   background: var(--panel);
   color: var(--text);
   border-radius: 6px;
-  padding: 8px 12px;
+  padding: 6px 10px;
   cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: #b9bbb2;
 }
 
 button:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: 0.45;
 }
 
 .primary {
@@ -50,8 +53,9 @@ button:disabled {
 
 .shell {
   display: grid;
-  grid-template-columns: 340px minmax(0, 1fr);
+  grid-template-columns: 312px minmax(0, 1fr);
   height: 100vh;
+  overflow: hidden;
 }
 
 .sidebar {
@@ -60,39 +64,66 @@ button:disabled {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
 }
 
 .brand {
-  height: 82px;
-  padding: 16px;
+  height: 64px;
+  padding: 12px 12px 10px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex: 0 0 auto;
 }
 
 .brand h1 {
   margin: 0;
-  font-size: 22px;
-  line-height: 1.1;
+  font-size: 17px;
+  line-height: 1.2;
+  font-weight: 650;
 }
 
 .brand p {
-  margin: 3px 0 0;
+  margin: 2px 0 0;
   color: var(--muted);
+  font-size: 12px;
 }
 
 .search {
-  margin: 0 14px 12px;
+  margin: 0 10px 8px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 11px 12px;
+  border-radius: 6px;
+  padding: 8px 10px;
   background: var(--panel);
   color: var(--text);
+  outline: none;
+  flex: 0 0 auto;
+}
+
+.search:focus {
+  border-color: var(--accent);
 }
 
 .session-list {
-  overflow: auto;
-  padding: 0 8px 12px;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  padding: 0 7px 10px;
+  min-height: 0;
+  flex: 1 1 auto;
+  scrollbar-gutter: stable;
+}
+
+.session-list::-webkit-scrollbar,
+.messages::-webkit-scrollbar {
+  width: 10px;
+}
+
+.session-list::-webkit-scrollbar-thumb,
+.messages::-webkit-scrollbar-thumb {
+  background: #c9c9bf;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background-clip: content-box;
 }
 
 .session-item {
@@ -100,8 +131,8 @@ button:disabled {
   border: 1px solid transparent;
   background: transparent;
   text-align: left;
-  padding: 10px;
-  margin: 2px 0;
+  padding: 8px;
+  margin: 1px 0;
 }
 
 .session-item.active {
@@ -112,16 +143,22 @@ button:disabled {
 
 .session-title {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.25;
 }
 
+.pin {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 650;
+}
+
 .session-preview {
-  margin-top: 5px;
+  margin-top: 4px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.35;
   overflow: hidden;
   display: -webkit-box;
@@ -130,95 +167,119 @@ button:disabled {
 }
 
 .session-time {
-  margin-top: 6px;
+  margin-top: 5px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .chat {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
 }
 
 .chat-header {
-  min-height: 82px;
+  min-height: 64px;
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 253, 248, 0.86);
-  backdrop-filter: blur(12px);
-  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 10px 14px;
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   align-items: center;
+  flex: 0 0 auto;
+}
+
+.chat-title-wrap {
+  min-width: 0;
 }
 
 .title-input {
-  width: min(720px, 52vw);
+  width: min(680px, 50vw);
   border: 1px solid transparent;
   background: transparent;
   color: var(--text);
-  font-size: 22px;
-  font-weight: 700;
-  padding: 6px 0;
+  font-size: 17px;
+  font-weight: 650;
+  padding: 3px 0;
+  outline: none;
 }
 
 .title-input:not(:disabled) {
   border-color: var(--line);
   background: var(--panel);
-  padding: 6px 10px;
+  padding: 4px 8px;
   border-radius: 6px;
 }
 
 .meta {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 70vw;
 }
 
 .actions {
   display: flex;
-  gap: 8px;
+  gap: 7px;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
 
 .empty {
-  margin: auto;
-  max-width: 520px;
-  text-align: center;
-  color: var(--muted);
+  display: grid;
+  place-items: center;
+  flex: 1 1 auto;
+  padding: 24px;
 }
 
-.empty h2 {
+.new-chat-box {
+  width: min(440px, 92vw);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 20px;
+  color: var(--muted);
+  box-shadow: var(--shadow);
+}
+
+.new-chat-title {
   color: var(--text);
-  margin-bottom: 8px;
+  font-size: 18px;
+  font-weight: 650;
+  margin-bottom: 6px;
 }
 
 .messages {
   overflow: auto;
-  padding: 28px max(28px, calc((100vw - 1180px) / 2));
+  padding: 18px max(18px, calc((100vw - 1120px) / 2));
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .message {
   display: grid;
-  grid-template-columns: 92px minmax(0, 760px);
-  gap: 14px;
-  margin-bottom: 18px;
+  grid-template-columns: 82px minmax(0, 780px);
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .role {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   text-align: right;
-  padding-top: 12px;
+  padding-top: 9px;
 }
 
 .bubble {
   border: 1px solid var(--line);
   background: var(--assistant);
   border-radius: 8px;
-  padding: 14px 16px;
-  line-height: 1.62;
+  padding: 11px 13px;
+  line-height: 1.58;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -236,16 +297,12 @@ button:disabled {
 @media (max-width: 840px) {
   .shell {
     grid-template-columns: 1fr;
+    grid-template-rows: 42vh 58vh;
   }
 
   .sidebar {
-    height: 42vh;
     border-right: 0;
     border-bottom: 1px solid var(--line);
-  }
-
-  .chat {
-    height: 58vh;
   }
 
   .chat-header {
@@ -259,7 +316,7 @@ button:disabled {
 
   .message {
     grid-template-columns: 1fr;
-    gap: 5px;
+    gap: 4px;
   }
 
   .role {
