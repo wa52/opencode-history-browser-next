@@ -39,7 +39,7 @@ function renderSessions() {
     item.innerHTML = `
       <div class="session-title">${session.pinned ? "<span class=\"pin\">Pinned</span>" : ""}<span>${escapeHtml(session.title || "Untitled")}</span></div>
       <div class="session-preview">${escapeHtml(preview)}</div>
-      <div class="session-time">${fmtTime(session.updated)} | ${escapeHtml(shortPath(session.directory))}</div>
+      <div class="session-time">${fmtTime(session.updated)}</div>
     `;
     $("sessionList").appendChild(item);
   }
@@ -65,7 +65,6 @@ function renderCurrent() {
   $("messages").innerHTML = "";
   $("titleInput").disabled = true;
   $("titleInput").value = current?.title || "New chat";
-  $("composerContinue").disabled = !current;
   $("sideContinue").disabled = !current;
   $("sidePin").disabled = !current;
   $("sideRename").disabled = !current;
@@ -75,22 +74,18 @@ function renderCurrent() {
     $("meta").textContent = "No chat selected";
     $("sidePin").textContent = "Pin";
     $("detailStatus").textContent = "New chat";
-    $("detailFolder").textContent = "-";
-    $("detailUpdated").textContent = "-";
-    $("detailModel").textContent = "-";
-    $("detailTokens").textContent = "-";
-    $("detailId").textContent = "-";
+    $("detailUpdated").textContent = "Not started";
+    $("detailModel").textContent = "Default";
+    $("detailTokens").textContent = "0";
     return;
   }
 
   $("sidePin").textContent = current.pinned ? "Unpin" : "Pin";
-  $("meta").textContent = `${fmtTime(current.updated)} | ${shortPath(current.directory)} | ${current.id}`;
+  $("meta").textContent = `${fmtTime(current.updated)} | ${shortPath(current.directory)}`;
   $("detailStatus").textContent = current.pinned ? "Pinned history" : "History";
-  $("detailFolder").textContent = current.directory || "-";
   $("detailUpdated").textContent = fmtTime(current.updated);
   $("detailModel").textContent = current.model || current.agent || "-";
   $("detailTokens").textContent = `${current.tokensInput || 0} in / ${current.tokensOutput || 0} out`;
-  $("detailId").textContent = current.id;
 
   for (const message of current.messages) {
     if (!message.text && !message.extras.length) continue;
@@ -180,7 +175,6 @@ function escapeHtml(value) {
 
 $("refresh").onclick = loadSessions;
 $("openNewBtn").onclick = openNew;
-$("composerContinue").onclick = openCurrent;
 $("sideContinue").onclick = openCurrent;
 $("sidePin").onclick = togglePin;
 $("sideRename").onclick = rename;
