@@ -41,6 +41,8 @@ async function tui(api) {
       onSelect: start,
     },
   ]);
+
+  setTimeout(start, 1200);
 }
 
 function openUrl(url) {
