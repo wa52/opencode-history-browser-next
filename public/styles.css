@@ -77,8 +77,8 @@ button:disabled {
 }
 
 .brand {
-  height: 60px;
-  padding: 12px 12px 8px;
+  height: 44px;
+  padding: 10px 12px 6px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -87,19 +87,22 @@ button:disabled {
 
 .brand h1 {
   margin: 0;
-  font-size: 17px;
+  font-size: 16px;
   line-height: 1.2;
   font-weight: 650;
 }
 
-.brand p {
-  margin: 2px 0 0;
+.icon-button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
   color: var(--muted);
-  font-size: 12px;
 }
 
 .search {
-  margin: 0 12px 10px;
+  margin: 4px 12px 10px;
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 8px 10px;
@@ -116,7 +119,7 @@ button:disabled {
 .session-list {
   overflow-y: scroll;
   overflow-x: hidden;
-  padding: 0 8px 12px;
+  padding: 0 10px 48px;
   min-height: 0;
   flex: 1 1 auto;
   scrollbar-gutter: stable;
