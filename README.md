@@ -59,6 +59,7 @@ powershell -ExecutionPolicy Bypass -File D:\codex\opencode-history-browser\start
 - Read chat content in a browser-like view
 - Pin important chats
 - Rename OpenCode session titles
+- Delete chats, with an automatic database backup before deletion
 - Continue a chat by opening a new PowerShell window with `opencode --session <id>`
 
 Pin state is stored in:
@@ -71,6 +72,12 @@ OpenCode sessions are read from:
 
 ```text
 C:\Users\<you>\.local\share\opencode\opencode.db
+```
+
+Delete backups are stored in:
+
+```text
+C:\Users\<you>\.local\share\opencode\history-browser-backups
 ```
 
 ## Requirements

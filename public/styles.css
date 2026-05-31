@@ -51,6 +51,15 @@ button:disabled {
   color: #fff;
 }
 
+.danger {
+  color: #9f1d1d;
+}
+
+.danger:hover:not(:disabled) {
+  border-color: #d29a9a;
+  background: #fff5f5;
+}
+
 .shell {
   display: grid;
   grid-template-columns: 312px minmax(0, 1fr);

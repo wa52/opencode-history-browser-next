@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -193,6 +194,32 @@ def rename_session(session_id, title):
             raise ValueError("Session was not found.")
 
 
+def backup_database():
+    backup_dir = DB_PATH.parent / "history-browser-backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    backup_path = backup_dir / f"opencode-before-delete-{stamp}.db"
+    shutil.copy2(DB_PATH, backup_path)
+    return backup_path
+
+
+def delete_session(session_id):
+    backup_path = backup_database()
+    with connect(write=True) as con:
+        session = con.execute("select id from session where id = ?", (session_id,)).fetchone()
+        if not session:
+            raise ValueError("Session was not found.")
+        for table in ("part", "message", "session_message", "todo", "session_share"):
+            con.execute(f"delete from {table} where session_id = ?", (session_id,))
+        con.execute("delete from session where id = ?", (session_id,))
+        con.commit()
+
+    state = load_state()
+    state["pinned"] = [item for item in state.get("pinned", []) if item != session_id]
+    save_state(state)
+    return backup_path
+
+
 def set_pinned(session_id, pinned):
     state = load_state()
     ids = [item for item in state.get("pinned", []) if item != session_id]
@@ -256,6 +283,13 @@ class Handler(BaseHTTPRequestHandler):
             session_id = urllib.parse.unquote(parsed.path.split("/")[-2])
             set_pinned(session_id, bool(data.get("pinned")))
             return self.json({"ok": True})
+        if parsed.path.startswith("/api/sessions/") and parsed.path.endswith("/delete"):
+            session_id = urllib.parse.unquote(parsed.path.split("/")[-2])
+            try:
+                backup_path = delete_session(session_id)
+                return self.json({"ok": True, "backup": str(backup_path)})
+            except Exception as exc:
+                return self.json({"error": str(exc)}, status=400)
         if parsed.path.startswith("/api/sessions/") and parsed.path.endswith("/open"):
             session_id = urllib.parse.unquote(parsed.path.split("/")[-2])
             session = get_session(session_id)

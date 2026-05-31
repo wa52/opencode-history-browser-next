@@ -67,6 +67,7 @@ function renderCurrent() {
   $("titleInput").value = current?.title || "New chat";
   $("pinBtn").disabled = !current;
   $("renameBtn").disabled = !current;
+  $("deleteBtn").disabled = !current;
   $("openBtn").disabled = !current;
   $("renameBtn").textContent = "Rename";
 
@@ -136,6 +137,19 @@ async function openCurrent() {
   }
 }
 
+async function deleteCurrent() {
+  if (!current) return;
+  const title = current.title || current.id;
+  const confirmed = confirm(`Delete this chat permanently?\n\n${title}\n\nA database backup will be created before deletion.`);
+  if (!confirmed) return;
+  const deletedID = current.id;
+  const data = await request(`/api/sessions/${encodeURIComponent(deletedID)}/delete`, { method: "POST" });
+  current = null;
+  await loadSessions();
+  renderCurrent();
+  alert(`Deleted. Backup created:\n${data.backup}`);
+}
+
 async function openNew() {
   const data = await request("/api/open-new", { method: "POST" });
   if (!data.ok) {
@@ -157,6 +171,7 @@ $("newBtn").onclick = newChat;
 $("openNewBtn").onclick = openNew;
 $("pinBtn").onclick = togglePin;
 $("renameBtn").onclick = rename;
+$("deleteBtn").onclick = deleteCurrent;
 $("openBtn").onclick = openCurrent;
 $("search").addEventListener("input", () => {
   clearTimeout(window.__searchTimer);
