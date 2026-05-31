@@ -9,6 +9,10 @@
   --user: #eef7f5;
   --assistant: #ffffff;
   --shadow: 0 8px 24px rgba(25, 25, 20, 0.08);
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
 }
 
 * {
@@ -31,7 +35,7 @@ button {
   border: 1px solid var(--line);
   background: var(--panel);
   color: var(--text);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 6px 10px;
   cursor: pointer;
 }
@@ -98,13 +102,14 @@ button:disabled {
   padding: 0;
   display: inline-grid;
   place-items: center;
+  border-radius: var(--radius-sm);
   color: var(--muted);
 }
 
 .search {
   margin: 4px 12px 10px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 8px 10px;
   background: var(--panel);
   color: var(--text);
@@ -134,7 +139,7 @@ button:disabled {
 .messages::-webkit-scrollbar-thumb {
   background: #c9c9bf;
   border: 2px solid transparent;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background-clip: content-box;
 }
 
@@ -145,7 +150,7 @@ button:disabled {
   text-align: left;
   padding: 9px 10px;
   margin: 2px 0;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 .session-item.active {
@@ -227,7 +232,7 @@ button:disabled {
   border-color: var(--line);
   background: var(--panel);
   padding: 4px 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 .meta {
@@ -266,7 +271,7 @@ button:disabled {
   width: min(440px, 92vw);
   border: 1px solid var(--line);
   background: var(--panel);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 20px;
   color: var(--muted);
   box-shadow: var(--shadow);
@@ -308,7 +313,7 @@ button:disabled {
 .bubble {
   border: 1px solid var(--line);
   background: var(--assistant);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 11px 13px;
   line-height: 1.58;
   white-space: pre-wrap;
@@ -335,7 +340,7 @@ button:disabled {
 .details-card {
   border: 1px solid var(--line);
   background: var(--panel);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 14px;
   box-shadow: var(--shadow);
 }
