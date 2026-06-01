@@ -54,21 +54,3 @@ opencode plugin --global github:wa52/opencode-history-browser
 ```
 
 Then fully restart OpenCode.
-
-If the browser page does not refresh, press `Ctrl+F5`.
-
-## Local development
-
-The OpenCode plugin is self-contained and does not need Python.
-
-The legacy standalone launcher is still available for local development:
-
-```text
-D:\codex\opencode-history-browser\open-history-browser.cmd
-```
-
-Or run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File D:\codex\opencode-history-browser\start.ps1
-```
