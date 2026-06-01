@@ -215,8 +215,9 @@ async function createSnapshot() {
   $("sideSnapshot").disabled = true;
   $("sideSnapshot").textContent = "Creating...";
   try {
-    await request(`/api/sessions/${encodeURIComponent(current.id)}/snapshot`, { method: "POST" });
+    const data = await request(`/api/sessions/${encodeURIComponent(current.id)}/snapshot`, { method: "POST" });
     await loadSessions();
+    if (data.sessionID) await selectSession(data.sessionID);
   } finally {
     $("sideSnapshot").textContent = "Balanced snapshot";
     renderCurrent();
