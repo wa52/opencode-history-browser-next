@@ -2,44 +2,33 @@
 
 ChatGPT-style local history UI for OpenCode.
 
-## Install from GitHub
+## Install
 
 ```powershell
-npm install -g github:wa52/opencode-history-browser
-opencode-history-browser --doctor
-opencode-history-browser
+opencode plugin --global github:wa52/opencode-history-browser
 ```
 
-The launcher opens the browser automatically. Manual URL:
+Restart OpenCode. The browser UI opens automatically.
+
+You can also open it from OpenCode:
+
+```text
+/history-browser
+/history-ui
+/chat-history
+```
+
+Manual URL, if needed:
 
 ```text
 http://127.0.0.1:8765
 ```
 
-## Install as an OpenCode plugin
-
-If your OpenCode build supports GitHub/npm plugin specs:
-
-```powershell
-opencode plugin --global github:<your-name>/opencode-history-browser
-```
-
-Then restart OpenCode and run:
-
-```text
-/history-browser
-```
-
-Aliases:
-
-```text
-/history-ui
-/chat-history
-```
-
 ## Local development
 
-Double-click:
+The OpenCode plugin is self-contained and does not need Python.
+
+The legacy standalone launcher is still available for local development:
 
 ```text
 D:\codex\opencode-history-browser\open-history-browser.cmd
@@ -82,27 +71,16 @@ C:\Users\<you>\.local\share\opencode\history-browser-backups
 ## Requirements
 
 - OpenCode installed on the machine
-- Python 3 available as `python`, `py -3`, or set through `PYTHON`
-- Node.js only for the global `npm install -g github:...` launcher
+- No Python setup needed when installed through `opencode plugin`
 
-## Troubleshooting On Another Computer
+## Troubleshooting
 
-Run:
-
-```powershell
-opencode-history-browser --doctor
-```
-
-If the database is missing, open OpenCode once on that computer first.
-
-If Python is missing, install Python 3 or set:
+Update/reinstall:
 
 ```powershell
-$env:PYTHON="C:\Path\To\python.exe"
+opencode plugin --global github:wa52/opencode-history-browser
 ```
 
-If OpenCode stores data somewhere custom, set:
+Then fully restart OpenCode.
 
-```powershell
-$env:OPENCODE_DB="C:\Path\To\opencode.db"
-```
+If the browser page does not refresh, press `Ctrl+F5`.
