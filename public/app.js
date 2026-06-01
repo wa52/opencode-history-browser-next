@@ -3,6 +3,8 @@ const $ = (id) => document.getElementById(id);
 let sessions = [];
 let current = null;
 let renameMode = false;
+let selectMode = false;
+const selectedIds = new Set();
 
 const fmtTime = (ms) => (ms ? new Date(ms).toLocaleString() : "Unknown time");
 
@@ -33,16 +35,24 @@ function renderSessions() {
   $("sessionList").innerHTML = "";
   for (const session of sessions) {
     const item = document.createElement("button");
-    item.className = `session-item ${current?.id === session.id ? "active" : ""}`;
-    item.onclick = () => selectSession(session.id);
+    item.className = `session-item ${current?.id === session.id ? "active" : ""} ${selectMode ? "selecting" : ""}`;
+    item.onclick = () => {
+      if (selectMode) toggleSelected(session.id);
+      else selectSession(session.id);
+    };
     const preview = session.preview?.[0]?.text || session.directory || "";
+    const checkbox = selectMode ? `<input class="session-check" type="checkbox" ${selectedIds.has(session.id) ? "checked" : ""} aria-label="Select chat" />` : "";
     item.innerHTML = `
-      <div class="session-title">${session.pinned ? "<span class=\"pin\">Pinned</span>" : ""}<span>${escapeHtml(session.title || "Untitled")}</span></div>
-      <div class="session-preview">${escapeHtml(preview)}</div>
-      <div class="session-time">${fmtTime(session.updated)}</div>
+      ${checkbox}
+      <div>
+        <div class="session-title">${session.pinned ? "<span class=\"pin\">Pinned</span>" : ""}<span>${escapeHtml(session.title || "Untitled")}</span></div>
+        <div class="session-preview">${escapeHtml(preview)}</div>
+        <div class="session-time">${fmtTime(session.updated)}</div>
+      </div>
     `;
     $("sessionList").appendChild(item);
   }
+  renderBatchControls();
 }
 
 async function selectSession(id) {
@@ -69,6 +79,7 @@ function renderCurrent() {
   $("sidePin").disabled = !current;
   $("sideRename").disabled = !current;
   $("sideDelete").disabled = !current;
+  $("sideSnapshot").disabled = !current;
 
   if (!current) {
     $("meta").textContent = "No chat selected";
@@ -100,6 +111,24 @@ function renderCurrent() {
     `;
     $("messages").appendChild(node);
   }
+}
+
+function renderBatchControls() {
+  $("selectModeBtn").textContent = selectMode ? "Cancel" : "Select";
+  $("deleteSelectedBtn").disabled = !selectMode || selectedIds.size === 0;
+  $("deleteSelectedBtn").textContent = selectedIds.size ? `Delete ${selectedIds.size}` : "Delete selected";
+}
+
+function toggleSelectMode() {
+  selectMode = !selectMode;
+  selectedIds.clear();
+  renderSessions();
+}
+
+function toggleSelected(id) {
+  if (selectedIds.has(id)) selectedIds.delete(id);
+  else selectedIds.add(id);
+  renderSessions();
 }
 
 async function togglePin() {
@@ -156,6 +185,39 @@ async function deleteCurrent() {
   renderCurrent();
 }
 
+async function deleteSelected() {
+  const ids = [...selectedIds];
+  if (!ids.length) return;
+  const confirmed = confirm(`Delete ${ids.length} selected chat${ids.length > 1 ? "s" : ""} permanently?`);
+  if (!confirmed) return;
+  const data = await request("/api/sessions/delete", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+  const failed = data.results?.filter((item) => !item.ok) || [];
+  if (current && ids.includes(current.id)) current = null;
+  selectedIds.clear();
+  selectMode = false;
+  await loadSessions();
+  renderCurrent();
+  if (failed.length) alert(`Deleted with ${failed.length} failure(s).`);
+}
+
+async function createSnapshot() {
+  if (!current) return;
+  const confirmed = confirm(`Create a Balanced context snapshot for this chat?\n\n${current.title || current.id}\n\nThe original chat will not be changed.`);
+  if (!confirmed) return;
+  $("sideSnapshot").disabled = true;
+  $("sideSnapshot").textContent = "Creating...";
+  try {
+    await request(`/api/sessions/${encodeURIComponent(current.id)}/snapshot`, { method: "POST" });
+    await loadSessions();
+  } finally {
+    $("sideSnapshot").textContent = "Balanced snapshot";
+    renderCurrent();
+  }
+}
+
 async function openNew() {
   const data = await request("/api/open-new", { method: "POST" });
   if (!data.ok) {
@@ -175,9 +237,12 @@ function escapeHtml(value) {
 $("refresh").onclick = loadSessions;
 $("openNewBtn").onclick = openNew;
 $("sideContinue").onclick = openCurrent;
+$("sideSnapshot").onclick = createSnapshot;
 $("sidePin").onclick = togglePin;
 $("sideRename").onclick = rename;
 $("sideDelete").onclick = deleteCurrent;
+$("selectModeBtn").onclick = toggleSelectMode;
+$("deleteSelectedBtn").onclick = deleteSelected;
 $("search").addEventListener("input", () => {
   clearTimeout(window.__searchTimer);
   window.__searchTimer = setTimeout(loadSessions, 180);

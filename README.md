@@ -39,7 +39,8 @@ http://127.0.0.1:8765
 - Read chat content in a browser-like view
 - Pin important chats
 - Rename OpenCode session titles
-- Delete chats
+- Delete one chat or multi-select chats for batch deletion
+- Create a Balanced context snapshot as a new session
 - Continue a selected chat in OpenCode
 - Start a new chat from the browser view
 

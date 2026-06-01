@@ -118,10 +118,41 @@ async function handleRequest(api, request, response) {
       removePinned(api, sessionID);
       return sendJson(response, { ok: true });
     }
+    if (action === "snapshot") {
+      const session = await getSession(api, sessionID);
+      if (!session) return sendJson(response, { error: "Session not found" }, 404);
+      const snapshot = buildBalancedSnapshot(session);
+      const created = await assertOk(api.client.session.create({ title: `Snapshot - ${session.title || "Untitled"}` }));
+      const newSessionID = created?.id;
+      if (!newSessionID) throw new Error("Snapshot session was not created.");
+      await assertOk(api.client.session.prompt({
+        sessionID: newSessionID,
+        noReply: true,
+        parts: [{ type: "text", text: snapshot }],
+      }));
+      await assertOk(api.client.tui.selectSession({ sessionID: newSessionID }));
+      return sendJson(response, { ok: true, sessionID: newSessionID });
+    }
     if (action === "open") {
       await assertOk(api.client.tui.selectSession({ sessionID }));
       return sendJson(response, { ok: true, command: `opencode --session ${sessionID}` });
     }
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/sessions/delete") {
+    const body = await readJson(request);
+    const ids = Array.isArray(body.ids) ? [...new Set(body.ids.filter((item) => typeof item === "string"))] : [];
+    const results = [];
+    for (const sessionID of ids) {
+      try {
+        await assertOk(api.client.session.delete({ sessionID }));
+        removePinned(api, sessionID);
+        results.push({ id: sessionID, ok: true });
+      } catch (error) {
+        results.push({ id: sessionID, ok: false, error: errorMessage(error) });
+      }
+    }
+    return sendJson(response, { ok: results.every((item) => item.ok), results });
   }
 
   if (request.method === "POST" && url.pathname === "/api/open-new") {
@@ -311,6 +342,89 @@ function normalizeModel(model) {
 
 function compact(text) {
   return String(text).replace(/\s+/g, " ").trim().slice(0, 220);
+}
+
+function buildBalancedSnapshot(session) {
+  const messages = Array.isArray(session.messages) ? session.messages : [];
+  const facts = importantLines(messages);
+  const recent = messages.slice(-10).map((message) => {
+    const speaker = message.role === "user" ? "User" : "Assistant";
+    return `- ${speaker}: ${clip(message.text || message.extras?.join(", ") || "", 650)}`;
+  }).filter((line) => line.trim().length > 10);
+
+  return [
+    "# Context Snapshot",
+    "",
+    "Use this compressed context to continue the work. The original OpenCode session is preserved separately.",
+    "",
+    "## Source",
+    `- Title: ${session.title || "Untitled"}`,
+    `- Session ID: ${session.id}`,
+    `- Folder: ${session.directory || "Unknown"}`,
+    `- Updated: ${session.updated ? new Date(session.updated).toLocaleString() : "Unknown"}`,
+    "",
+    "## Goal",
+    `- ${inferGoal(messages)}`,
+    "",
+    "## Current State",
+    ...currentState(messages),
+    "",
+    "## Important Details",
+    ...(facts.length ? facts.map((line) => `- ${line}`) : ["- No high-signal paths, commands, errors, or decisions were detected automatically."]),
+    "",
+    "## Recent Context",
+    ...(recent.length ? recent : ["- No recent message text was available."]),
+    "",
+    "## Next Steps",
+    "- Continue from this snapshot instead of re-reading the entire original session.",
+    "- Ask for the original session if exact wording, omitted logs, or full command output is needed.",
+  ].join("\n");
+}
+
+function inferGoal(messages) {
+  const firstUser = messages.find((message) => message.role === "user" && message.text?.trim());
+  if (!firstUser) return "Continue the previous OpenCode task using the structured context below.";
+  return clip(firstUser.text, 420);
+}
+
+function currentState(messages) {
+  const assistant = [...messages].reverse().find((message) => message.role !== "user" && message.text?.trim());
+  const user = [...messages].reverse().find((message) => message.role === "user" && message.text?.trim());
+  const lines = [];
+  if (assistant) lines.push(`- Last assistant state: ${clip(assistant.text, 520)}`);
+  if (user) lines.push(`- Latest user request: ${clip(user.text, 420)}`);
+  return lines.length ? lines : ["- No clear current state was detected."];
+}
+
+function importantLines(messages) {
+  const patterns = [
+    /[A-Za-z]:\\[^\s"'<>|]+/g,
+    /(?:\.\/|\.\.\/|\/)[^\s"'<>|]+/g,
+    /`([^`]{3,160})`/g,
+    /\b(?:error|failed|exception|timeout|denied|warning|TODO|FIXME)\b[^\n]*/gi,
+    /(?:决定|问题|错误|失败|路径|命令|下一步|注意|约束|需要|已经)[^\n。]{0,120}/g,
+  ];
+  const seen = new Set();
+  const output = [];
+  for (const message of messages) {
+    const text = String(message.text || "");
+    for (const pattern of patterns) {
+      for (const match of text.matchAll(pattern)) {
+        const value = clip((match[1] || match[0]).replace(/\s+/g, " ").trim(), 220);
+        const key = value.toLowerCase();
+        if (value.length < 3 || seen.has(key)) continue;
+        seen.add(key);
+        output.push(value);
+        if (output.length >= 28) return output;
+      }
+    }
+  }
+  return output;
+}
+
+function clip(text, max) {
+  const value = String(text).replace(/\s+/g, " ").trim();
+  return value.length > max ? `${value.slice(0, max - 3)}...` : value;
 }
 
 function errorMessage(error) {
