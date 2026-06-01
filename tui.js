@@ -4,11 +4,13 @@ import { existsSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { promisify } from "node:util";
 
 const id = "opencode-history-browser";
 const root = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(root, "public");
+const execFileAsync = promisify(execFile);
 let server;
 let serverUrl;
 
@@ -126,7 +128,9 @@ async function listSessions(api, search) {
   const result = await assertOk(client.list({ limit: 250, search: search || undefined, archived: false }));
   const pinned = getPinned(api);
   const pinnedRank = new Map(pinned.map((sessionID, index) => [sessionID, index]));
-  const rows = await Promise.all((Array.isArray(result) ? result : []).map((session) => sessionRow(api, session, pinned)));
+  let source = Array.isArray(result) ? result : [];
+  if (!source.length) source = await listSessionsFromCli(search);
+  const rows = await Promise.all(source.map((session) => sessionRow(api, session, pinned)));
   rows.sort((a, b) => {
     if (a.pinned && b.pinned) return pinnedRank.get(a.id) - pinnedRank.get(b.id);
     if (a.pinned) return -1;
@@ -134,6 +138,44 @@ async function listSessions(api, search) {
     return (b.updated || 0) - (a.updated || 0);
   });
   return rows;
+}
+
+async function listSessionsFromCli(search) {
+  for (const command of opencodeCommands()) {
+    try {
+      const { stdout } = await execFileAsync(command, ["--pure", "session", "list"], {
+        timeout: 15000,
+        maxBuffer: 1024 * 1024 * 4,
+        windowsHide: true,
+      });
+      const needle = String(search || "").trim().toLowerCase();
+      return stdout
+        .split(/\r?\n/)
+        .map(parseSessionListLine)
+        .filter(Boolean)
+        .filter((session) => !needle || session.id.toLowerCase().includes(needle) || session.title.toLowerCase().includes(needle));
+    } catch {
+      continue;
+    }
+  }
+  return [];
+}
+
+function opencodeCommands() {
+  const names = [process.env.OPENCODE_BINARY, process.argv[0], process.execPath, process.platform === "win32" ? "opencode.cmd" : "opencode"];
+  return [...new Set(names.filter((name) => name && /opencode/i.test(name)))];
+}
+
+function parseSessionListLine(line) {
+  const match = /^(ses_[A-Za-z0-9]+)\s+(.+?)\s{2,}(.+)$/.exec(line.trimEnd());
+  if (!match) return undefined;
+  return {
+    id: match[1],
+    title: match[2].trim() || "Untitled",
+    directory: "",
+    slug: "",
+    time: { created: 0, updated: 0 },
+  };
 }
 
 async function sessionRow(api, session, pinned) {
