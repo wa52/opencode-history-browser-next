@@ -18,6 +18,14 @@ You can also open it from OpenCode:
 /chat-history
 ```
 
+Uninstall from OpenCode:
+
+```text
+/history-browser-uninstall
+```
+
+Then fully restart OpenCode.
+
 Manual URL, if needed:
 
 ```text

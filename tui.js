@@ -1,11 +1,12 @@
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
+import { homedir } from "node:os";
 
 const id = "opencode-history-browser";
 const root = dirname(fileURLToPath(import.meta.url));
@@ -37,6 +38,16 @@ async function tui(api) {
         aliases: ["history-ui", "chat-history"],
       },
       onSelect: start,
+    },
+    {
+      title: "Uninstall History Browser",
+      value: "history-browser.uninstall",
+      description: "Remove this plugin from OpenCode TUI config.",
+      category: "History",
+      slash: {
+        name: "history-browser-uninstall",
+      },
+      onSelect: () => uninstallSelf(api),
     },
   ]);
 
@@ -319,6 +330,62 @@ function openUrl(url) {
     return;
   }
   spawn("xdg-open", [url], { detached: true, stdio: "ignore" }).unref();
+}
+
+async function uninstallSelf(api) {
+  const files = tuiConfigCandidates();
+  const removed = [];
+  for (const file of files) {
+    const changed = await removePluginFromConfig(file);
+    if (changed) removed.push(file);
+  }
+
+  if (!removed.length) {
+    api.ui.toast({
+      variant: "warning",
+      title: "History Browser",
+      message: "Plugin entry was not found. Check your OpenCode tui.json.",
+      duration: 6000,
+    });
+    return;
+  }
+
+  api.ui.toast({
+    variant: "success",
+    title: "History Browser uninstalled",
+    message: "Restart OpenCode to finish removing it.",
+    duration: 8000,
+  });
+}
+
+function tuiConfigCandidates() {
+  const home = homedir();
+  const paths = [];
+  if (process.env.XDG_CONFIG_HOME) paths.push(join(process.env.XDG_CONFIG_HOME, "opencode", "tui.json"));
+  if (home) paths.push(join(home, ".config", "opencode", "tui.json"));
+  if (process.env.APPDATA) paths.push(join(process.env.APPDATA, "opencode", "tui.json"));
+  return [...new Set(paths)];
+}
+
+async function removePluginFromConfig(file) {
+  if (!existsSync(file)) return false;
+  const text = await readFile(file, "utf8");
+  const config = JSON.parse(text || "{}");
+  const plugins = Array.isArray(config.plugin) ? config.plugin : [];
+  const next = plugins.filter((plugin) => !isThisPlugin(plugin));
+  if (next.length === plugins.length) return false;
+  config.plugin = next;
+  await writeFile(file, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+  return true;
+}
+
+function isThisPlugin(plugin) {
+  return typeof plugin === "string" && (
+    plugin === id ||
+    plugin.startsWith(`${id}@`) ||
+    plugin === "github:wa52/opencode-history-browser" ||
+    plugin.startsWith("github:wa52/opencode-history-browser#")
+  );
 }
 
 export default { id, tui };
