@@ -26,11 +26,7 @@ Uninstall from OpenCode:
 
 Then fully restart OpenCode.
 
-Manual URL, if needed:
-
-```text
-http://127.0.0.1:8765
-```
+The local browser URL includes a temporary token. If you need to reopen it, run `/history-browser` again instead of typing the port by hand.
 
 ## Features
 

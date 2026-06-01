@@ -5,6 +5,7 @@ let current = null;
 let renameMode = false;
 let selectMode = false;
 const selectedIds = new Set();
+const apiToken = new URLSearchParams(window.location.search).get("token") || "";
 
 const fmtTime = (ms) => (ms ? new Date(ms).toLocaleString() : "Unknown time");
 
@@ -15,8 +16,12 @@ const shortPath = (path) => {
 };
 
 const request = async (url, options) => {
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
+  const target = apiToken && url.startsWith("/api/") ? `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(apiToken)}` : url;
+  const res = await fetch(target, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(apiToken ? { "X-History-Browser-Token": apiToken } : {}),
+    },
     ...options,
   });
   const data = await res.json();

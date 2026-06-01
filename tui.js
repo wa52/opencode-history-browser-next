@@ -7,6 +7,7 @@ import { dirname } from "node:path";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { homedir } from "node:os";
+import { randomBytes } from "node:crypto";
 
 const id = "opencode-history-browser";
 const root = dirname(fileURLToPath(import.meta.url));
@@ -14,6 +15,7 @@ const publicDir = join(root, "public");
 const execFileAsync = promisify(execFile);
 let server;
 let serverUrl;
+let serverToken;
 
 async function tui(api) {
   const start = async () => {
@@ -24,6 +26,16 @@ async function tui(api) {
       title: "History Browser",
       message: `Opened ${serverUrl}`,
       duration: 3500,
+    });
+  };
+  const safeStart = () => {
+    start().catch((error) => {
+      api.ui.toast({
+        variant: "error",
+        title: "History Browser failed",
+        message: errorMessage(error),
+        duration: 7000,
+      });
     });
   };
 
@@ -37,7 +49,7 @@ async function tui(api) {
         name: "history-browser",
         aliases: ["history-ui", "chat-history"],
       },
-      onSelect: start,
+      onSelect: safeStart,
     },
     {
       title: "Uninstall History Browser",
@@ -51,7 +63,7 @@ async function tui(api) {
     },
   ]);
 
-  setTimeout(start, 1000);
+  setTimeout(safeStart, 1000);
 }
 
 async function ensureServer(api) {
@@ -64,7 +76,8 @@ async function ensureServer(api) {
   });
 
   const port = await listenOnAvailablePort(server, 8765);
-  serverUrl = `http://127.0.0.1:${port}/`;
+  serverToken = randomBytes(18).toString("base64url");
+  serverUrl = `http://127.0.0.1:${port}/?token=${serverToken}`;
   return serverUrl;
 }
 
@@ -88,6 +101,10 @@ async function listenOnAvailablePort(httpServer, firstPort) {
 
 async function handleRequest(api, request, response) {
   const url = new URL(request.url || "/", "http://127.0.0.1");
+  if (url.pathname.startsWith("/api/") && !isAuthorized(request, url)) {
+    return sendJson(response, { error: "Unauthorized history browser request" }, 401);
+  }
+
   if (request.method === "GET" && url.pathname === "/api/sessions") {
     const query = url.searchParams.get("q") || "";
     const sessions = await listSessions(api, query);
@@ -99,6 +116,22 @@ async function handleRequest(api, request, response) {
     const session = await getSession(api, sessionID);
     if (!session) return sendJson(response, { error: "Session not found" }, 404);
     return sendJson(response, { session });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/sessions/delete") {
+    const body = await readJson(request);
+    const ids = Array.isArray(body.ids) ? [...new Set(body.ids.filter((item) => typeof item === "string"))] : [];
+    const results = [];
+    for (const sessionID of ids) {
+      try {
+        await assertOk(api.client.session.delete({ sessionID }));
+        removePinned(api, sessionID);
+        results.push({ id: sessionID, ok: true });
+      } catch (error) {
+        results.push({ id: sessionID, ok: false, error: errorMessage(error) });
+      }
+    }
+    return sendJson(response, { ok: results.every((item) => item.ok), results });
   }
 
   if (request.method === "POST" && url.pathname.startsWith("/api/sessions/")) {
@@ -137,22 +170,6 @@ async function handleRequest(api, request, response) {
       await assertOk(api.client.tui.selectSession({ sessionID }));
       return sendJson(response, { ok: true, command: `opencode --session ${sessionID}` });
     }
-  }
-
-  if (request.method === "POST" && url.pathname === "/api/sessions/delete") {
-    const body = await readJson(request);
-    const ids = Array.isArray(body.ids) ? [...new Set(body.ids.filter((item) => typeof item === "string"))] : [];
-    const results = [];
-    for (const sessionID of ids) {
-      try {
-        await assertOk(api.client.session.delete({ sessionID }));
-        removePinned(api, sessionID);
-        results.push({ id: sessionID, ok: true });
-      } catch (error) {
-        results.push({ id: sessionID, ok: false, error: errorMessage(error) });
-      }
-    }
-    return sendJson(response, { ok: results.every((item) => item.ok), results });
   }
 
   if (request.method === "POST" && url.pathname === "/api/open-new") {
@@ -402,7 +419,7 @@ function importantLines(messages) {
     /(?:\.\/|\.\.\/|\/)[^\s"'<>|]+/g,
     /`([^`]{3,160})`/g,
     /\b(?:error|failed|exception|timeout|denied|warning|TODO|FIXME)\b[^\n]*/gi,
-    /(?:决定|问题|错误|失败|路径|命令|下一步|注意|约束|需要|已经)[^\n。]{0,120}/g,
+    /(?:\u51b3\u5b9a|\u95ee\u9898|\u9519\u8bef|\u5931\u8d25|\u8def\u5f84|\u547d\u4ee4|\u4e0b\u4e00\u6b65|\u6ce8\u610f|\u7ea6\u675f|\u9700\u8981|\u5df2\u7ecf)[^\n\u3002]{0,120}/g,
   ];
   const seen = new Set();
   const output = [];
@@ -432,6 +449,12 @@ function errorMessage(error) {
   if (typeof error === "string") return error;
   if (error.message) return error.message;
   return JSON.stringify(error);
+}
+
+function isAuthorized(request, url) {
+  if (!serverToken) return false;
+  const header = request.headers["x-history-browser-token"];
+  return header === serverToken || url.searchParams.get("token") === serverToken;
 }
 
 function openUrl(url) {
