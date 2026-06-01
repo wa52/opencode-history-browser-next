@@ -4,14 +4,13 @@ ChatGPT-style local history UI for OpenCode.
 
 ## Install from GitHub
 
-After this repo is uploaded to GitHub:
-
 ```powershell
-npm install -g github:<your-name>/opencode-history-browser
+npm install -g github:wa52/opencode-history-browser
+opencode-history-browser --doctor
 opencode-history-browser
 ```
 
-Open:
+The launcher opens the browser automatically. Manual URL:
 
 ```text
 http://127.0.0.1:8765
@@ -83,5 +82,27 @@ C:\Users\<you>\.local\share\opencode\history-browser-backups
 ## Requirements
 
 - OpenCode installed on the machine
-- Python 3 available as `python`
+- Python 3 available as `python`, `py -3`, or set through `PYTHON`
 - Node.js only for the global `npm install -g github:...` launcher
+
+## Troubleshooting On Another Computer
+
+Run:
+
+```powershell
+opencode-history-browser --doctor
+```
+
+If the database is missing, open OpenCode once on that computer first.
+
+If Python is missing, install Python 3 or set:
+
+```powershell
+$env:PYTHON="C:\Path\To\python.exe"
+```
+
+If OpenCode stores data somewhere custom, set:
+
+```powershell
+$env:OPENCODE_DB="C:\Path\To\opencode.db"
+```
