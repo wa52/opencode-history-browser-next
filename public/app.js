@@ -4,6 +4,7 @@ let sessions = [];
 let current = null;
 let renameMode = false;
 let selectMode = false;
+let sending = false;
 const selectedIds = new Set();
 const apiToken = new URLSearchParams(window.location.search).get("token") || "";
 
@@ -85,6 +86,8 @@ function renderCurrent() {
   $("sideRename").disabled = !current;
   $("sideDelete").disabled = !current;
   $("sideSnapshot").disabled = !current;
+  $("promptInput").placeholder = current ? "Message this chat" : "Start a new chat";
+  $("sendBtn").disabled = sending;
 
   if (!current) {
     $("meta").textContent = "No chat selected";
@@ -116,6 +119,7 @@ function renderCurrent() {
     `;
     $("messages").appendChild(node);
   }
+  $("messages").scrollTop = $("messages").scrollHeight;
 }
 
 function renderBatchControls() {
@@ -226,10 +230,50 @@ async function createSnapshot() {
 
 async function openNew() {
   const data = await request("/api/open-new", { method: "POST" });
+  if (data.sessionID) {
+    await loadSessions();
+    await selectSession(data.sessionID);
+    return;
+  }
   if (!data.ok) {
     await navigator.clipboard.writeText(data.command);
     alert(`Copied command: ${data.command}`);
   }
+}
+
+async function sendPrompt(event) {
+  event.preventDefault();
+  if (sending) return;
+  const text = $("promptInput").value.trim();
+  if (!text) return;
+  sending = true;
+  $("sendBtn").disabled = true;
+  $("sendBtn").textContent = "Sending";
+  try {
+    let sessionID = current?.id;
+    if (!sessionID) {
+      const created = await request("/api/open-new", { method: "POST" });
+      sessionID = created.sessionID;
+      if (!sessionID) throw new Error("New chat was not created.");
+    }
+    $("promptInput").value = "";
+    await request(`/api/sessions/${encodeURIComponent(sessionID)}/prompt`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+    await loadSessions();
+    await selectSession(sessionID);
+  } finally {
+    sending = false;
+    $("sendBtn").disabled = false;
+    $("sendBtn").textContent = "Send";
+    resizePrompt();
+  }
+}
+
+function resizePrompt() {
+  $("promptInput").style.height = "auto";
+  $("promptInput").style.height = `${Math.min($("promptInput").scrollHeight, 140)}px`;
 }
 
 function escapeHtml(value) {
@@ -249,9 +293,17 @@ $("sideRename").onclick = rename;
 $("sideDelete").onclick = deleteCurrent;
 $("selectModeBtn").onclick = toggleSelectMode;
 $("deleteSelectedBtn").onclick = deleteSelected;
+$("composer").onsubmit = sendPrompt;
 $("search").addEventListener("input", () => {
   clearTimeout(window.__searchTimer);
   window.__searchTimer = setTimeout(loadSessions, 180);
+});
+$("promptInput").addEventListener("input", resizePrompt);
+$("promptInput").addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    $("composer").requestSubmit();
+  }
 });
 $("titleInput").addEventListener("keydown", (event) => {
   if (event.key === "Enter") rename();

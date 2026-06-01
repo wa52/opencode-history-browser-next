@@ -170,13 +170,24 @@ async function handleRequest(api, request, response) {
       await assertOk(api.client.tui.selectSession({ sessionID }));
       return sendJson(response, { ok: true, command: `opencode --session ${sessionID}` });
     }
+    if (action === "prompt") {
+      const body = await readJson(request);
+      const text = String(body.text || "").trim();
+      if (!text) return sendJson(response, { error: "Message is empty" }, 400);
+      await assertOk(api.client.tui.selectSession({ sessionID }));
+      await assertOk(api.client.session.prompt({
+        sessionID,
+        parts: [{ type: "text", text }],
+      }));
+      return sendJson(response, { ok: true, sessionID });
+    }
   }
 
   if (request.method === "POST" && url.pathname === "/api/open-new") {
     const result = await assertOk(api.client.session.create({ title: "New chat" }));
     const sessionID = result?.id;
     if (sessionID) await assertOk(api.client.tui.selectSession({ sessionID }));
-    return sendJson(response, { ok: true, command: "opencode" });
+    return sendJson(response, { ok: true, command: "opencode", sessionID });
   }
 
   return serveStatic(response, url.pathname);
