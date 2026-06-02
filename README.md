@@ -1,24 +1,45 @@
 # OpenCode History Browser
 
-ChatGPT-style local history UI for OpenCode.
+Browser UI for OpenCode sessions, installed as a global OpenCode TUI plugin.
 
 ## Install
+
+Copy this into OpenCode or a terminal:
 
 ```powershell
 opencode plugin --global github:wa52/opencode-history-browser
 ```
 
-Restart OpenCode. The browser UI opens automatically at a local URL.
+Restart OpenCode. The browser opens automatically.
 
-You can also open it from OpenCode:
+If it does not open, run this in OpenCode:
 
 ```text
 /history-browser
-/history-ui
-/chat-history
 ```
 
-Uninstall from OpenCode:
+## What You Get
+
+- Browser-style chat UI for OpenCode history
+- Continue chats from the browser input
+- Start a new chat
+- Stop an active reply
+- Pin, rename, delete, and multi-delete chats
+- Search all sessions
+- Create a Balanced context snapshot
+- Open OpenCode panels from the browser: Models, Sessions, Help, Themes
+
+## Update
+
+```powershell
+opencode plugin --global --force github:wa52/opencode-history-browser
+```
+
+Restart OpenCode after updating.
+
+## Uninstall
+
+Run this inside OpenCode:
 
 ```text
 /history-browser-uninstall
@@ -26,45 +47,21 @@ Uninstall from OpenCode:
 
 Then fully restart OpenCode.
 
-The local browser URL includes a temporary token. If you need to reopen it, run `/history-browser` again instead of typing the port by hand.
-
-## Features
-
-- Left sidebar with all OpenCode sessions
-- Search sessions
-- Read chat content in a browser-like view
-- Continue or start chats directly from the browser
-- Pin important chats
-- Rename OpenCode session titles
-- Delete one chat or multi-select chats for batch deletion
-- Create a Balanced context snapshot as a new session
-- Start a new chat from the browser view
-
 ## Requirements
 
-- OpenCode installed on the machine
-- No Python setup
-- No database path setup
+- OpenCode installed
+- No Python
+- No manual database path
 - No environment variables
 
-## Update or Reinstall
+## Troubleshooting
+
+If `/history-browser` is missing after restart, run the update command above and restart OpenCode again.
+
+On Windows, if PowerShell blocks `opencode.ps1`, use the `.cmd` command:
 
 ```powershell
-opencode plugin --global github:wa52/opencode-history-browser
+opencode.cmd plugin --global --force github:wa52/opencode-history-browser
 ```
 
-Then fully restart OpenCode.
-
-## Verify Install
-
-On Windows, the global TUI config should contain `github:wa52/opencode-history-browser`:
-
-```powershell
-Get-Content "$env:USERPROFILE\.config\opencode\tui.json"
-```
-
-If `/history-browser` disappears after restarting OpenCode, reinstall with:
-
-```powershell
-opencode plugin --global --force github:wa52/opencode-history-browser
-```
+The browser URL contains a temporary token. Reopen it with `/history-browser` instead of reusing an old URL.
