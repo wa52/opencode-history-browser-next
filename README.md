@@ -4,9 +4,15 @@ Browser UI for OpenCode sessions, installed as a global OpenCode TUI plugin.
 
 ## Install
 
-Copy this into OpenCode or a terminal:
+Windows PowerShell or Command Prompt:
 
 ```powershell
+opencode.cmd plugin --global github:wa52/opencode-history-browser
+```
+
+macOS, Linux, or a shell where `opencode` already works:
+
+```sh
 opencode plugin --global github:wa52/opencode-history-browser
 ```
 
@@ -31,7 +37,15 @@ If it does not open, run this in OpenCode:
 
 ## Update
 
+Windows:
+
 ```powershell
+opencode.cmd plugin --global --force github:wa52/opencode-history-browser
+```
+
+macOS/Linux:
+
+```sh
 opencode plugin --global --force github:wa52/opencode-history-browser
 ```
 
@@ -58,10 +72,6 @@ Then fully restart OpenCode.
 
 If `/history-browser` is missing after restart, run the update command above and restart OpenCode again.
 
-On Windows, if PowerShell blocks `opencode.ps1`, use the `.cmd` command:
-
-```powershell
-opencode.cmd plugin --global --force github:wa52/opencode-history-browser
-```
+On Windows, use `opencode.cmd` instead of `opencode` if PowerShell blocks `opencode.ps1`.
 
 The browser URL contains a temporary token. Reopen it with `/history-browser` instead of reusing an old URL.
