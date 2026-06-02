@@ -29,7 +29,7 @@ If it does not open, run this in OpenCode:
 - Browser-style chat UI for OpenCode history
 - Continue chats from the browser input
 - Start a new chat
-- Stop an active reply
+- Stop an active reply with Stop or Esc
 - Pin, rename, delete, and multi-delete chats
 - Search all sessions
 - Create a Balanced context snapshot

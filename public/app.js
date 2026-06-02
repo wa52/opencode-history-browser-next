@@ -420,6 +420,11 @@ $("promptInput").addEventListener("keydown", (event) => {
 $("titleInput").addEventListener("keydown", (event) => {
   if (event.key === "Enter") rename();
 });
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !promptWatcher) return;
+  event.preventDefault();
+  abortPrompt(activePromptSessionID);
+});
 for (const button of document.querySelectorAll("[data-panel]")) {
   button.addEventListener("click", () => openPanel(button.dataset.panel));
 }
