@@ -246,6 +246,7 @@ async function sendPrompt(event) {
   if (sending) return;
   const text = $("promptInput").value.trim();
   if (!text) return;
+  const optimisticSessionID = current?.id;
   sending = true;
   $("sendBtn").disabled = true;
   $("sendBtn").textContent = "Sending";
@@ -257,17 +258,30 @@ async function sendPrompt(event) {
       if (!sessionID) throw new Error("New chat was not created.");
     }
     $("promptInput").value = "";
+    if (optimisticSessionID === sessionID && current) {
+      current.messages.push({ id: "", role: "user", created: Date.now(), text, extras: [] });
+      renderCurrent();
+    }
     await request(`/api/sessions/${encodeURIComponent(sessionID)}/prompt`, {
       method: "POST",
       body: JSON.stringify({ text }),
     });
     await loadSessions();
     await selectSession(sessionID);
+    schedulePromptRefresh(sessionID);
   } finally {
     sending = false;
     $("sendBtn").disabled = false;
     $("sendBtn").textContent = "Send";
     resizePrompt();
+  }
+}
+
+function schedulePromptRefresh(sessionID) {
+  for (const delay of [1200, 3000, 6000, 10000]) {
+    window.setTimeout(() => {
+      if (current?.id === sessionID) selectSession(sessionID).catch(() => {});
+    }, delay);
   }
 }
 

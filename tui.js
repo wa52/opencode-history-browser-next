@@ -175,10 +175,7 @@ async function handleRequest(api, request, response) {
       const text = String(body.text || "").trim();
       if (!text) return sendJson(response, { error: "Message is empty" }, 400);
       await assertOk(api.client.tui.selectSession({ sessionID }));
-      await assertOk(api.client.session.prompt({
-        sessionID,
-        parts: [{ type: "text", text }],
-      }));
+      await promptSession(api, { sessionID, text });
       return sendJson(response, { ok: true, sessionID });
     }
   }
@@ -370,6 +367,15 @@ function normalizeModel(model) {
 
 function compact(text) {
   return String(text).replace(/\s+/g, " ").trim().slice(0, 220);
+}
+
+async function promptSession(api, { sessionID, text }) {
+  const payload = {
+    sessionID,
+    parts: [{ type: "text", text }],
+  };
+  const method = api.client.session.promptAsync || api.client.session.prompt;
+  return assertOk(method.call(api.client.session, payload));
 }
 
 function buildBalancedSnapshot(session) {

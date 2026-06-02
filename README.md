@@ -54,3 +54,17 @@ opencode plugin --global github:wa52/opencode-history-browser
 ```
 
 Then fully restart OpenCode.
+
+## Verify Install
+
+On Windows, the global TUI config should contain `github:wa52/opencode-history-browser`:
+
+```powershell
+Get-Content "$env:USERPROFILE\.config\opencode\tui.json"
+```
+
+If `/history-browser` disappears after restarting OpenCode, reinstall with:
+
+```powershell
+opencode plugin --global --force github:wa52/opencode-history-browser
+```
