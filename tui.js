@@ -374,8 +374,46 @@ async function promptSession(api, { sessionID, text }) {
     sessionID,
     parts: [{ type: "text", text }],
   };
+  const model = await promptModel(api, sessionID);
+  if (model) payload.model = model;
   const method = api.client.session.promptAsync || api.client.session.prompt;
   return assertOk(method.call(api.client.session, payload));
+}
+
+async function promptModel(api, sessionID) {
+  const session = await getRawSession(api, sessionID);
+  const normalized = normalizeModelObject(session?.model);
+  if (normalized) return normalized;
+  const fallback = normalizeModelObject(session?.next?.model || session?.nextModel || session?.modelID || session?.modelId);
+  if (fallback) return fallback;
+  return undefined;
+}
+
+async function getRawSession(api, sessionID) {
+  try {
+    return await assertOk(api.client.session.get({ sessionID }));
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeModelObject(model) {
+  if (!model) return undefined;
+  if (typeof model === "string") return splitModelID(model);
+  const providerID = model.providerID || model.providerId || model.provider;
+  const modelID = model.modelID || model.modelId || model.id || model.model;
+  if (providerID && modelID) return { providerID, modelID };
+  if (providerID && !modelID) return splitModelID(providerID);
+  if (!providerID && modelID) return splitModelID(modelID);
+  return undefined;
+}
+
+function splitModelID(value) {
+  const text = String(value || "").trim();
+  if (!text) return undefined;
+  const slash = text.indexOf("/");
+  if (slash > 0) return { providerID: text.slice(0, slash), modelID: text.slice(slash + 1) };
+  return { providerID: "opencode", modelID: text };
 }
 
 function buildBalancedSnapshot(session) {
