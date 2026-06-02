@@ -170,13 +170,17 @@ async function handleRequest(api, request, response) {
       await assertOk(api.client.tui.selectSession({ sessionID }));
       return sendJson(response, { ok: true, command: `opencode --session ${sessionID}` });
     }
+    if (action === "abort") {
+      await assertOk(api.client.session.abort({ sessionID }));
+      return sendJson(response, { ok: true, sessionID });
+    }
     if (action === "prompt") {
       const body = await readJson(request);
       const text = String(body.text || "").trim();
       if (!text) return sendJson(response, { error: "Message is empty" }, 400);
       await assertOk(api.client.tui.selectSession({ sessionID }));
       const result = await promptSession(api, { sessionID, text });
-      return sendJson(response, { ok: true, sessionID, model: result.model });
+      return sendJson(response, { ok: true, sessionID, method: result.method, model: result.model });
     }
   }
 

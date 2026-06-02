@@ -6,6 +6,7 @@ let renameMode = false;
 let selectMode = false;
 let sending = false;
 let promptWatcher = null;
+let activePromptSessionID = null;
 const selectedIds = new Set();
 const apiToken = new URLSearchParams(window.location.search).get("token") || "";
 
@@ -244,6 +245,10 @@ async function openNew() {
 
 async function sendPrompt(event) {
   event.preventDefault();
+  if (promptWatcher) {
+    await abortPrompt(activePromptSessionID);
+    return;
+  }
   if (sending) return;
   const text = $("promptInput").value.trim();
   if (!text) return;
@@ -278,13 +283,34 @@ async function sendPrompt(event) {
   } finally {
     sending = false;
     $("sendBtn").disabled = false;
-    $("sendBtn").textContent = "Send";
+    $("sendBtn").textContent = promptWatcher ? "Stop" : "Send";
     resizePrompt();
+  }
+}
+
+async function abortPrompt(sessionID) {
+  if (!sessionID) return;
+  $("sendBtn").disabled = true;
+  setComposerStatus("Stopping OpenCode...");
+  try {
+    await request(`/api/sessions/${encodeURIComponent(sessionID)}/abort`, { method: "POST" });
+    clearPromptWatcher();
+    await selectSession(sessionID);
+    await loadSessions();
+    setComposerStatus("");
+  } catch (error) {
+    setComposerStatus(error.message);
+  } finally {
+    $("sendBtn").disabled = false;
+    $("sendBtn").textContent = "Send";
   }
 }
 
 function watchPrompt(sessionID, beforeSignature) {
   clearPromptWatcher();
+  activePromptSessionID = sessionID;
+  $("sendBtn").disabled = false;
+  $("sendBtn").textContent = "Stop";
   const startedAt = Date.now();
   let lastSignature = beforeSignature;
   let stableTicks = 0;
@@ -319,6 +345,8 @@ function clearPromptWatcher() {
   if (!promptWatcher) return;
   window.clearInterval(promptWatcher);
   promptWatcher = null;
+  activePromptSessionID = null;
+  if (!sending) $("sendBtn").textContent = "Send";
 }
 
 function setComposerStatus(text) {
