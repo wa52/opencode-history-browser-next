@@ -370,6 +370,14 @@ function compact(text) {
 }
 
 async function promptSession(api, { sessionID, text }) {
+  if (api.client.tui?.appendPrompt && api.client.tui?.submitPrompt) {
+    await assertOk(api.client.tui.selectSession({ sessionID }));
+    if (api.client.tui.clearPrompt) await assertOk(api.client.tui.clearPrompt({}));
+    await assertOk(api.client.tui.appendPrompt({ text }));
+    await assertOk(api.client.tui.submitPrompt({}));
+    return { method: "tui" };
+  }
+
   const payload = {
     sessionID,
     parts: [{ type: "text", text }],
@@ -378,7 +386,7 @@ async function promptSession(api, { sessionID, text }) {
   if (model) payload.model = model;
   const method = api.client.session.promptAsync || api.client.session.prompt;
   await assertOk(method.call(api.client.session, payload));
-  return { model };
+  return { method: "session", model };
 }
 
 async function promptModel(api, sessionID) {

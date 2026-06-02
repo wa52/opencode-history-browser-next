@@ -2,5 +2,6 @@ __pycache__/
 *.pyc
 *.log
 node_modules/
+.serena/
 .DS_Store
 Thumbs.db
