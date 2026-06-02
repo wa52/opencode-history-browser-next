@@ -330,12 +330,15 @@ async function getSession(api, sessionID) {
   const pinned = getPinned(api);
   const output = await sessionRow(api, sessionResult.data, pinned);
   output.messages = (Array.isArray(messagesResult) ? messagesResult : []).map((item) => {
-    const text = (item.parts || [])
+    const partText = (item.parts || [])
       .filter((part) => part.type === "text" && part.text)
       .map((part) => part.text)
       .join("\n\n")
       .trim();
+    const error = messageError(item.info?.error);
+    const text = partText || error;
     const extras = (item.parts || []).filter((part) => part.type && part.type !== "text").map((part) => part.type).slice(0, 8);
+    if (error && partText) extras.push(error);
     return {
       id: item.info?.id || "",
       role: item.info?.role || "message",
@@ -345,6 +348,13 @@ async function getSession(api, sessionID) {
     };
   });
   return output;
+}
+
+function messageError(error) {
+  if (!error) return "";
+  const name = error.name || "OpenCode error";
+  const message = error.data?.message || error.message || "";
+  return message ? `${name}: ${message}` : name;
 }
 
 async function sessionPreview(api, sessionID) {
