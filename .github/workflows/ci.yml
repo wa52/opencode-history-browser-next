@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  package-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Check JavaScript syntax
+        run: |
+          node --check tui.js
+          node --check public/app.js
+      - name: Check package contents
+        run: |
+          npm pack --dry-run
+          npm pack --json > pack.json
+          node -e 'const fs=require("fs"); const files=JSON.parse(fs.readFileSync("pack.json","utf8"))[0].files.map(f=>f.path).sort(); const expected=["README.md","package.json","public/app.js","public/index.html","public/styles.css","tui.js"].sort(); if (JSON.stringify(files)!==JSON.stringify(expected)) { console.error(files); process.exit(1); }'
