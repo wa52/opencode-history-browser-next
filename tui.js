@@ -134,6 +134,12 @@ async function handleRequest(api, request, response) {
     return sendJson(response, { ok: results.every((item) => item.ok), results });
   }
 
+  if (request.method === "POST" && url.pathname.startsWith("/api/tui/")) {
+    const action = url.pathname.slice("/api/tui/".length);
+    await openTuiPanel(api, action);
+    return sendJson(response, { ok: true, action });
+  }
+
   if (request.method === "POST" && url.pathname.startsWith("/api/sessions/")) {
     const [, sessionID, action] = matchSessionAction(url.pathname);
     if (action === "rename") {
@@ -192,6 +198,17 @@ async function handleRequest(api, request, response) {
   }
 
   return serveStatic(response, url.pathname);
+}
+
+async function openTuiPanel(api, action) {
+  const method = {
+    help: "openHelp",
+    models: "openModels",
+    sessions: "openSessions",
+    themes: "openThemes",
+  }[action];
+  if (!method || !api.client.tui?.[method]) throw new Error(`Unsupported OpenCode panel: ${action}`);
+  await assertOk(api.client.tui[method]({}));
 }
 
 async function listSessions(api, search) {

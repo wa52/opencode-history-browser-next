@@ -408,6 +408,12 @@ button:disabled {
   margin-top: 8px;
 }
 
+.panel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .composer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

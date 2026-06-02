@@ -243,6 +243,18 @@ async function openNew() {
   }
 }
 
+async function openPanel(panel) {
+  try {
+    await request(`/api/tui/${encodeURIComponent(panel)}`, { method: "POST" });
+    setComposerStatus(`Opened ${panel}`);
+    window.setTimeout(() => {
+      if ($("composerStatus").textContent === `Opened ${panel}`) setComposerStatus("");
+    }, 1600);
+  } catch (error) {
+    setComposerStatus(error.message);
+  }
+}
+
 async function sendPrompt(event) {
   event.preventDefault();
   if (promptWatcher) {
@@ -408,6 +420,9 @@ $("promptInput").addEventListener("keydown", (event) => {
 $("titleInput").addEventListener("keydown", (event) => {
   if (event.key === "Enter") rename();
 });
+for (const button of document.querySelectorAll("[data-panel]")) {
+  button.addEventListener("click", () => openPanel(button.dataset.panel));
+}
 
 renderCurrent();
 loadSessions().catch((error) => {
