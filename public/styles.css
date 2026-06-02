@@ -421,6 +421,14 @@ button:disabled {
   flex: 0 0 auto;
 }
 
+.composer-status {
+  grid-column: 1 / -1;
+  min-height: 16px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 0 4px;
+}
+
 .prompt-input {
   min-height: 40px;
   max-height: 140px;

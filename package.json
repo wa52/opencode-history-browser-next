@@ -3,19 +3,12 @@
   "version": "0.1.0",
   "description": "ChatGPT-style local browser UI for OpenCode history.",
   "type": "module",
-  "bin": {
-    "opencode-history-browser": "./bin/opencode-history-browser.js"
-  },
   "exports": {
     ".": "./tui.js",
     "./tui": "./tui.js"
   },
   "files": [
-    "app.py",
-    "bin",
     "public",
-    "open-history-browser.cmd",
-    "start.ps1",
     "tui.js",
     "README.md"
   ],

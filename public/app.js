@@ -5,6 +5,7 @@ let current = null;
 let renameMode = false;
 let selectMode = false;
 let sending = false;
+let promptWatcher = null;
 const selectedIds = new Set();
 const apiToken = new URLSearchParams(window.location.search).get("token") || "";
 
@@ -247,9 +248,11 @@ async function sendPrompt(event) {
   const text = $("promptInput").value.trim();
   if (!text) return;
   const optimisticSessionID = current?.id;
+  const beforeSignature = messageSignature(current);
   sending = true;
   $("sendBtn").disabled = true;
   $("sendBtn").textContent = "Sending";
+  setComposerStatus("Sending to OpenCode...");
   try {
     let sessionID = current?.id;
     if (!sessionID) {
@@ -262,13 +265,16 @@ async function sendPrompt(event) {
       current.messages.push({ id: "", role: "user", created: Date.now(), text, extras: [] });
       renderCurrent();
     }
-    await request(`/api/sessions/${encodeURIComponent(sessionID)}/prompt`, {
+    const result = await request(`/api/sessions/${encodeURIComponent(sessionID)}/prompt`, {
       method: "POST",
       body: JSON.stringify({ text }),
     });
+    setComposerStatus(result.method === "tui" ? "Submitted to OpenCode" : "Submitted");
     await loadSessions();
     await selectSession(sessionID);
-    schedulePromptRefresh(sessionID);
+    watchPrompt(sessionID, beforeSignature);
+  } catch (error) {
+    setComposerStatus(error.message);
   } finally {
     sending = false;
     $("sendBtn").disabled = false;
@@ -277,12 +283,64 @@ async function sendPrompt(event) {
   }
 }
 
-function schedulePromptRefresh(sessionID) {
-  for (const delay of [1200, 3000, 6000, 10000]) {
-    window.setTimeout(() => {
-      if (current?.id === sessionID) selectSession(sessionID).catch(() => {});
-    }, delay);
-  }
+function watchPrompt(sessionID, beforeSignature) {
+  clearPromptWatcher();
+  const startedAt = Date.now();
+  let lastSignature = beforeSignature;
+  let stableTicks = 0;
+  let sawAssistant = false;
+  promptWatcher = window.setInterval(async () => {
+    if (current?.id !== sessionID) return clearPromptWatcher();
+    if (Date.now() - startedAt > 10 * 60 * 1000) {
+      setComposerStatus("");
+      return clearPromptWatcher();
+    }
+    try {
+      await selectSession(sessionID);
+      await loadSessions();
+      const signature = messageSignature(current);
+      if (hasNewAssistantMessage(current, startedAt) || (signature !== beforeSignature && lastRole(current) !== "user")) {
+        sawAssistant = true;
+        setComposerStatus("OpenCode is responding...");
+      }
+      stableTicks = sawAssistant && signature === lastSignature ? stableTicks + 1 : 0;
+      lastSignature = signature;
+      if (sawAssistant && stableTicks >= 2) {
+        setComposerStatus("");
+        clearPromptWatcher();
+      }
+    } catch {
+      clearPromptWatcher();
+    }
+  }, 1500);
+}
+
+function clearPromptWatcher() {
+  if (!promptWatcher) return;
+  window.clearInterval(promptWatcher);
+  promptWatcher = null;
+}
+
+function setComposerStatus(text) {
+  $("composerStatus").textContent = text;
+}
+
+function messageSignature(session) {
+  return (session?.messages || [])
+    .slice(-6)
+    .map((message) => `${message.role}:${message.id}:${message.created}:${(message.text || "").length}`)
+    .join("|");
+}
+
+function hasNewAssistantMessage(session, startedAt) {
+  return (session?.messages || []).some((message) => {
+    return message.role !== "user" && message.text && (!message.created || message.created >= startedAt - 1000);
+  });
+}
+
+function lastRole(session) {
+  const messages = (session?.messages || []).filter((message) => message.text || message.extras?.length);
+  return messages[messages.length - 1]?.role || "";
 }
 
 function resizePrompt() {
