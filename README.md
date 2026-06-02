@@ -24,6 +24,12 @@ If it does not open, run this in OpenCode:
 /history-browser
 ```
 
+To verify an install:
+
+```text
+/history-browser-doctor
+```
+
 ## What You Get
 
 - Browser-style chat UI for OpenCode history
@@ -34,6 +40,7 @@ If it does not open, run this in OpenCode:
 - Search all sessions
 - Create a Balanced context snapshot
 - Open OpenCode panels from the browser: Models, Sessions, Help, Themes
+- Install self-check with `/history-browser-doctor`
 
 ## Update
 
@@ -73,5 +80,7 @@ Then fully restart OpenCode.
 If `/history-browser` is missing after restart, run the update command above and restart OpenCode again.
 
 On Windows, use `opencode.cmd` instead of `opencode` if PowerShell blocks `opencode.ps1`.
+
+If the browser opens but history does not load, run `/history-browser-doctor` inside OpenCode.
 
 The browser URL contains a temporary token. Reopen it with `/history-browser` instead of reusing an old URL.

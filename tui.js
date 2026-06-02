@@ -61,6 +61,16 @@ async function tui(api) {
       },
       onSelect: () => uninstallSelf(api),
     },
+    {
+      title: "Check History Browser Install",
+      value: "history-browser.doctor",
+      description: "Verify that the browser plugin can start and read OpenCode sessions.",
+      category: "History",
+      slash: {
+        name: "history-browser-doctor",
+      },
+      onSelect: () => runDoctor(api),
+    },
   ]);
 
   setTimeout(safeStart, 1000);
@@ -79,6 +89,32 @@ async function ensureServer(api) {
   serverToken = randomBytes(18).toString("base64url");
   serverUrl = `http://127.0.0.1:${port}/?token=${serverToken}`;
   return serverUrl;
+}
+
+async function runDoctor(api) {
+  const checks = [];
+  try {
+    const url = await ensureServer(api);
+    checks.push(`server ok: ${url.replace(/\?.*/, "")}`);
+  } catch (error) {
+    checks.push(`server failed: ${errorMessage(error)}`);
+  }
+
+  checks.push(existsSync(join(publicDir, "index.html")) ? "ui files ok" : "ui files missing");
+
+  try {
+    const sessions = await listSessions(api, "");
+    checks.push(`sessions ok: ${sessions.length}`);
+  } catch (error) {
+    checks.push(`sessions failed: ${errorMessage(error)}`);
+  }
+
+  api.ui.toast({
+    variant: checks.some((item) => item.includes("failed") || item.includes("missing")) ? "warning" : "success",
+    title: "History Browser Doctor",
+    message: checks.join(" | "),
+    duration: 10000,
+  });
 }
 
 async function listenOnAvailablePort(httpServer, firstPort) {
