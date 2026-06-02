@@ -175,8 +175,8 @@ async function handleRequest(api, request, response) {
       const text = String(body.text || "").trim();
       if (!text) return sendJson(response, { error: "Message is empty" }, 400);
       await assertOk(api.client.tui.selectSession({ sessionID }));
-      await promptSession(api, { sessionID, text });
-      return sendJson(response, { ok: true, sessionID });
+      const result = await promptSession(api, { sessionID, text });
+      return sendJson(response, { ok: true, sessionID, model: result.model });
     }
   }
 
@@ -377,7 +377,8 @@ async function promptSession(api, { sessionID, text }) {
   const model = await promptModel(api, sessionID);
   if (model) payload.model = model;
   const method = api.client.session.promptAsync || api.client.session.prompt;
-  return assertOk(method.call(api.client.session, payload));
+  await assertOk(method.call(api.client.session, payload));
+  return { model };
 }
 
 async function promptModel(api, sessionID) {
@@ -386,6 +387,9 @@ async function promptModel(api, sessionID) {
   if (normalized) return normalized;
   const fallback = normalizeModelObject(session?.next?.model || session?.nextModel || session?.modelID || session?.modelId);
   if (fallback) return fallback;
+  const listed = await getSession(api, sessionID);
+  const listedModel = normalizeModelObject(listed?.model);
+  if (listedModel) return listedModel;
   return undefined;
 }
 
