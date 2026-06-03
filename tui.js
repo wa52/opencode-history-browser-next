@@ -147,6 +147,11 @@ async function handleRequest(api, request, response) {
     return sendJson(response, { sessions });
   }
 
+  if (request.method === "GET" && url.pathname === "/api/models") {
+    const models = await listModels(api);
+    return sendJson(response, { models });
+  }
+
   if (request.method === "GET" && url.pathname.startsWith("/api/sessions/")) {
     const sessionID = decodeURIComponent(url.pathname.slice("/api/sessions/".length));
     const session = await getSession(api, sessionID);
@@ -221,7 +226,8 @@ async function handleRequest(api, request, response) {
       const text = String(body.text || "").trim();
       if (!text) return sendJson(response, { error: "Message is empty" }, 400);
       await assertOk(api.client.tui.selectSession({ sessionID }));
-      const result = await promptSession(api, { sessionID, text });
+      const model = normalizeModelObject(body.model);
+      const result = await promptSession(api, { sessionID, text, model });
       return sendJson(response, { ok: true, sessionID, method: result.method, model: result.model });
     }
   }
@@ -438,8 +444,8 @@ function compact(text) {
   return String(text).replace(/\s+/g, " ").trim().slice(0, 220);
 }
 
-async function promptSession(api, { sessionID, text }) {
-  if (api.client.tui?.appendPrompt && api.client.tui?.submitPrompt) {
+async function promptSession(api, { sessionID, text, model }) {
+  if (!model && api.client.tui?.appendPrompt && api.client.tui?.submitPrompt) {
     await assertOk(api.client.tui.selectSession({ sessionID }));
     if (api.client.tui.clearPrompt) await assertOk(api.client.tui.clearPrompt({}));
     await assertOk(api.client.tui.appendPrompt({ text }));
@@ -451,11 +457,49 @@ async function promptSession(api, { sessionID, text }) {
     sessionID,
     parts: [{ type: "text", text }],
   };
-  const model = await promptModel(api, sessionID);
-  if (model) payload.model = model;
+  const selectedModel = model || await promptModel(api, sessionID);
+  if (selectedModel) payload.model = selectedModel;
   const method = api.client.session.promptAsync || api.client.session.prompt;
   await assertOk(method.call(api.client.session, payload));
-  return { method: "session", model };
+  return { method: "session", model: selectedModel };
+}
+
+async function listModels(api) {
+  const providers = [];
+  let defaults = {};
+  try {
+    const result = await assertOk(api.client.config.providers({}));
+    if (Array.isArray(result?.providers)) providers.push(...result.providers);
+    if (result?.default && typeof result.default === "object") defaults = result.default;
+  } catch {
+    try {
+      const result = await assertOk(api.client.provider.list({}));
+      if (Array.isArray(result?.all)) providers.push(...result.all);
+      if (result?.default && typeof result.default === "object") defaults = result.default;
+    } catch {
+      return [];
+    }
+  }
+
+  const rows = [];
+  for (const provider of providers) {
+    const providerID = provider?.id;
+    if (!providerID || !provider.models || typeof provider.models !== "object") continue;
+    for (const [modelID, model] of Object.entries(provider.models)) {
+      rows.push({
+        providerID,
+        modelID,
+        label: `${provider.name || providerID} / ${model?.name || modelID}`,
+        default: defaults[providerID] === modelID,
+      });
+    }
+  }
+  rows.sort((a, b) => {
+    if (a.default && !b.default) return -1;
+    if (!a.default && b.default) return 1;
+    return a.label.localeCompare(b.label);
+  });
+  return rows;
 }
 
 async function promptModel(api, sessionID) {

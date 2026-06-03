@@ -15,6 +15,19 @@
   --radius-lg: 26px;
 }
 
+:root[data-theme="dark"] {
+  --bg: #141512;
+  --panel: #20211d;
+  --panel-2: #292a25;
+  --text: #f0f0e8;
+  --muted: #aaa99d;
+  --line: #3a3b34;
+  --accent: #2aa198;
+  --user: #18302d;
+  --assistant: #20211d;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -28,7 +41,8 @@ body {
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
@@ -76,7 +90,7 @@ button:disabled {
 
 .sidebar {
   border: 1px solid var(--line);
-  background: #f4f4ef;
+  background: var(--panel-2);
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -234,7 +248,7 @@ button:disabled {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: #fbfbf8;
+  background: var(--bg);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -243,7 +257,7 @@ button:disabled {
 .chat-header {
   min-height: 64px;
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.92);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
   padding: 10px 14px;
   display: flex;
   justify-content: flex-start;
@@ -408,10 +422,26 @@ button:disabled {
   margin-top: 8px;
 }
 
-.panel-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+.field-label {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  margin: 10px 0 5px;
+}
+
+.select-input {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  padding: 6px 9px;
+  outline: none;
+}
+
+.select-input:focus {
+  border-color: var(--accent);
 }
 
 .composer {

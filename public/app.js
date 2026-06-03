@@ -7,6 +7,12 @@ let selectMode = false;
 let sending = false;
 let promptWatcher = null;
 let activePromptSessionID = null;
+let liveRefreshTimer = null;
+let liveRefreshInFlight = false;
+let liveRefreshTicks = 0;
+let modelOptions = [];
+let selectedModel = readStoredJson("historyBrowser:model", null);
+let selectedTheme = localStorage.getItem("historyBrowser:theme") || "system";
 const selectedIds = new Set();
 const apiToken = new URLSearchParams(window.location.search).get("token") || "";
 const promptPollMs = 1500;
@@ -72,6 +78,7 @@ async function selectSession(id) {
   renameMode = false;
   renderSessions();
   renderCurrent();
+  startLiveRefresh();
 }
 
 function newChat() {
@@ -79,6 +86,7 @@ function newChat() {
   renameMode = false;
   renderSessions();
   renderCurrent();
+  stopLiveRefresh();
 }
 
 function renderCurrent() {
@@ -246,16 +254,51 @@ async function openNew() {
   }
 }
 
-async function openPanel(panel) {
-  try {
-    await request(`/api/tui/${encodeURIComponent(panel)}`, { method: "POST" });
-    setComposerStatus(`Opened ${panel}`);
-    window.setTimeout(() => {
-      if ($("composerStatus").textContent === `Opened ${panel}`) setComposerStatus("");
-    }, 1600);
-  } catch (error) {
-    setComposerStatus(error.message);
+async function loadModels() {
+  const data = await request("/api/models");
+  modelOptions = Array.isArray(data.models) ? data.models : [];
+  renderModels();
+}
+
+function renderModels() {
+  const select = $("modelSelect");
+  select.innerHTML = '<option value="">Follow OpenCode</option>';
+  for (const model of modelOptions) {
+    const option = document.createElement("option");
+    option.value = modelValue(model);
+    option.textContent = model.default ? `${model.label} (default)` : model.label;
+    select.appendChild(option);
   }
+  const value = selectedModel ? modelValue(selectedModel) : "";
+  select.value = [...select.options].some((option) => option.value === value) ? value : "";
+}
+
+function changeModel() {
+  const value = $("modelSelect").value;
+  selectedModel = value ? splitModelValue(value) : null;
+  localStorage.setItem("historyBrowser:model", JSON.stringify(selectedModel));
+}
+
+function modelValue(model) {
+  return `${model.providerID}::${model.modelID}`;
+}
+
+function splitModelValue(value) {
+  const [providerID, ...rest] = String(value || "").split("::");
+  const modelID = rest.join("::");
+  return providerID && modelID ? { providerID, modelID } : null;
+}
+
+function applyTheme() {
+  const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.dataset.theme = selectedTheme === "system" ? (systemDark ? "dark" : "light") : selectedTheme;
+  $("themeSelect").value = selectedTheme;
+}
+
+function changeTheme() {
+  selectedTheme = $("themeSelect").value || "system";
+  localStorage.setItem("historyBrowser:theme", selectedTheme);
+  applyTheme();
 }
 
 async function sendPrompt(event) {
@@ -287,7 +330,7 @@ async function sendPrompt(event) {
     }
     const result = await request(`/api/sessions/${encodeURIComponent(sessionID)}/prompt`, {
       method: "POST",
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, model: selectedModel || undefined }),
     });
     setComposerStatus(result.method === "tui" ? "Submitted to OpenCode" : "Submitted");
     await loadSessions();
@@ -337,8 +380,7 @@ function watchPrompt(sessionID, beforeSignature) {
       return clearPromptWatcher();
     }
     try {
-      await selectSession(sessionID);
-      await loadSessions();
+      await refreshCurrentSession({ force: true, refreshList: true });
       const signature = messageSignature(current);
       const finalAssistant = completedAssistantMessage(current, startedAt);
       if (hasNewAssistantMessage(current, startedAt) || (signature !== beforeSignature && lastRole(current) !== "user")) {
@@ -355,6 +397,42 @@ function watchPrompt(sessionID, beforeSignature) {
       clearPromptWatcher();
     }
   }, promptPollMs);
+}
+
+function startLiveRefresh() {
+  stopLiveRefresh();
+  if (!current) return;
+  liveRefreshTimer = window.setInterval(() => {
+    refreshCurrentSession({ refreshList: liveRefreshTicks % 4 === 0 }).catch(() => {});
+    liveRefreshTicks += 1;
+  }, promptPollMs);
+}
+
+function stopLiveRefresh() {
+  if (!liveRefreshTimer) return;
+  window.clearInterval(liveRefreshTimer);
+  liveRefreshTimer = null;
+  liveRefreshTicks = 0;
+}
+
+async function refreshCurrentSession({ force = false, refreshList = false } = {}) {
+  if (!current || liveRefreshInFlight || renameMode || document.hidden) return;
+  liveRefreshInFlight = true;
+  try {
+    const sessionID = current.id;
+    const previous = sessionStateSignature(current);
+    const data = await request(`/api/sessions/${encodeURIComponent(sessionID)}`);
+    if (current?.id !== sessionID) return;
+    current = data.session;
+    const next = sessionStateSignature(current);
+    if (force || previous !== next) {
+      renderCurrent();
+      renderSessions();
+    }
+    if (refreshList) await loadSessions();
+  } finally {
+    liveRefreshInFlight = false;
+  }
 }
 
 function clearPromptWatcher() {
@@ -374,6 +452,10 @@ function messageSignature(session) {
     .slice(-6)
     .map((message) => `${message.role}:${message.id}:${message.created}:${message.completed || 0}:${message.error || ""}:${(message.text || "").length}`)
     .join("|");
+}
+
+function sessionStateSignature(session) {
+  return `${session?.updated || 0}:${session?.title || ""}:${session?.model || ""}:${session?.tokensInput || 0}:${session?.tokensOutput || 0}:${messageSignature(session)}`;
 }
 
 function hasNewAssistantMessage(session, startedAt) {
@@ -406,6 +488,14 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
+function readStoredJson(key, fallback) {
+  try {
+    return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
+  } catch {
+    return fallback;
+  }
+}
+
 $("refresh").onclick = loadSessions;
 $("openNewBtn").onclick = openNew;
 $("sideContinue").onclick = openCurrent;
@@ -415,6 +505,8 @@ $("sideRename").onclick = rename;
 $("sideDelete").onclick = deleteCurrent;
 $("selectModeBtn").onclick = toggleSelectMode;
 $("deleteSelectedBtn").onclick = deleteSelected;
+$("modelSelect").onchange = changeModel;
+$("themeSelect").onchange = changeTheme;
 $("composer").onsubmit = sendPrompt;
 $("search").addEventListener("input", () => {
   clearTimeout(window.__searchTimer);
@@ -435,11 +527,13 @@ document.addEventListener("keydown", (event) => {
   event.preventDefault();
   abortPrompt(activePromptSessionID);
 });
-for (const button of document.querySelectorAll("[data-panel]")) {
-  button.addEventListener("click", () => openPanel(button.dataset.panel));
-}
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 
+applyTheme();
 renderCurrent();
 loadSessions().catch((error) => {
   $("empty").innerHTML = `<div class="new-chat-box"><div class="new-chat-title">Load failed</div><p>${escapeHtml(error.message)}</p></div>`;
+});
+loadModels().catch(() => {
+  $("modelSelect").innerHTML = '<option value="">Follow OpenCode</option>';
 });
