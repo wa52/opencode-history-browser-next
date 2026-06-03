@@ -9,6 +9,9 @@ let promptWatcher = null;
 let activePromptSessionID = null;
 const selectedIds = new Set();
 const apiToken = new URLSearchParams(window.location.search).get("token") || "";
+const promptPollMs = 1500;
+const promptMaxWaitMs = 10 * 60 * 1000;
+const promptStableFallbackTicks = Math.ceil((3 * 60 * 1000) / promptPollMs);
 
 const fmtTime = (ms) => (ms ? new Date(ms).toLocaleString() : "Unknown time");
 
@@ -329,7 +332,7 @@ function watchPrompt(sessionID, beforeSignature) {
   let sawAssistant = false;
   promptWatcher = window.setInterval(async () => {
     if (current?.id !== sessionID) return clearPromptWatcher();
-    if (Date.now() - startedAt > 10 * 60 * 1000) {
+    if (Date.now() - startedAt > promptMaxWaitMs) {
       setComposerStatus("");
       return clearPromptWatcher();
     }
@@ -344,14 +347,14 @@ function watchPrompt(sessionID, beforeSignature) {
       }
       stableTicks = sawAssistant && signature === lastSignature ? stableTicks + 1 : 0;
       lastSignature = signature;
-      if (finalAssistant || (sawAssistant && stableTicks >= 12)) {
+      if (finalAssistant || (sawAssistant && stableTicks >= promptStableFallbackTicks)) {
         setComposerStatus("");
         clearPromptWatcher();
       }
     } catch {
       clearPromptWatcher();
     }
-  }, 1500);
+  }, promptPollMs);
 }
 
 function clearPromptWatcher() {
