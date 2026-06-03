@@ -343,6 +343,8 @@ async function getSession(api, sessionID) {
       id: item.info?.id || "",
       role: item.info?.role || "message",
       created: item.info?.time?.created || 0,
+      completed: item.info?.time?.completed || 0,
+      error: error || "",
       text,
       extras,
     };

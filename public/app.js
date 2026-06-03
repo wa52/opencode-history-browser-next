@@ -337,13 +337,14 @@ function watchPrompt(sessionID, beforeSignature) {
       await selectSession(sessionID);
       await loadSessions();
       const signature = messageSignature(current);
+      const finalAssistant = completedAssistantMessage(current, startedAt);
       if (hasNewAssistantMessage(current, startedAt) || (signature !== beforeSignature && lastRole(current) !== "user")) {
         sawAssistant = true;
-        setComposerStatus("OpenCode is responding...");
+        setComposerStatus(finalAssistant?.error ? "OpenCode returned an error" : "OpenCode is responding...");
       }
       stableTicks = sawAssistant && signature === lastSignature ? stableTicks + 1 : 0;
       lastSignature = signature;
-      if (sawAssistant && stableTicks >= 2) {
+      if (finalAssistant || (sawAssistant && stableTicks >= 12)) {
         setComposerStatus("");
         clearPromptWatcher();
       }
@@ -368,7 +369,7 @@ function setComposerStatus(text) {
 function messageSignature(session) {
   return (session?.messages || [])
     .slice(-6)
-    .map((message) => `${message.role}:${message.id}:${message.created}:${(message.text || "").length}`)
+    .map((message) => `${message.role}:${message.id}:${message.created}:${message.completed || 0}:${message.error || ""}:${(message.text || "").length}`)
     .join("|");
 }
 
@@ -381,6 +382,12 @@ function hasNewAssistantMessage(session, startedAt) {
 function lastRole(session) {
   const messages = (session?.messages || []).filter((message) => message.text || message.extras?.length);
   return messages[messages.length - 1]?.role || "";
+}
+
+function completedAssistantMessage(session, startedAt) {
+  return [...(session?.messages || [])].reverse().find((message) => {
+    return message.role !== "user" && (message.completed || message.error) && (!message.created || message.created >= startedAt - 1000);
+  });
 }
 
 function resizePrompt() {
