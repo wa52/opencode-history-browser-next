@@ -392,9 +392,9 @@ button:disabled {
 }
 
 .message {
-  width: min(600px, 100%);
+  width: min(560px, 100%);
   max-width: 100%;
-  margin: 0 0 14px;
+  margin: 0 0 12px;
 }
 
 .message.user {
@@ -412,11 +412,11 @@ button:disabled {
 }
 
 .bubble {
-  width: 600px;
+  width: 560px;
   max-width: 100%;
-  min-height: 138px;
-  max-height: 340px;
-  padding: 20px 24px;
+  min-height: 128px;
+  max-height: 320px;
+  padding: 18px 22px;
   border: 1px solid var(--line);
   background: var(--assistant);
   border-radius: 22px;
@@ -430,9 +430,9 @@ button:disabled {
 
 .content {
   flex: 1;
-  font-size: 16px;
-  line-height: 1.52;
-  margin-bottom: 28px;
+  font-size: 15px;
+  line-height: 1.5;
+  margin-bottom: 24px;
   min-height: 0;
 }
 
@@ -446,7 +446,7 @@ button:disabled {
 }
 
 .message.metadata-only {
-  width: min(600px, 100%);
+  width: min(560px, 100%);
   margin: 0 0 8px;
 }
 
@@ -467,7 +467,7 @@ button:disabled {
 
 .status-bar {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.35;
   opacity: 0.6;
   overflow: hidden;
