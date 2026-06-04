@@ -313,22 +313,70 @@ async function replyPermission(id, reply) {
 }
 
 function renderModels() {
-  const select = $("modelSelect");
-  select.innerHTML = '<option value="">Follow OpenCode</option>';
-  for (const model of modelOptions) {
-    const option = document.createElement("option");
-    option.value = modelValue(model);
-    option.textContent = model.default ? `${model.label} (default)` : model.label;
-    select.appendChild(option);
+  const search = $("modelSearch");
+  const selected = selectedModel ? modelOptions.find((model) => modelValue(model) === modelValue(selectedModel)) : null;
+  if (selected) {
+    search.value = selected.label;
+    search.dataset.value = modelValue(selected);
+  } else if (!document.activeElement || document.activeElement !== search) {
+    search.value = "";
+    search.dataset.value = "";
   }
-  const value = selectedModel ? modelValue(selectedModel) : "";
-  select.value = [...select.options].some((option) => option.value === value) ? value : "";
+  renderModelMenu();
 }
 
 function changeModel() {
-  const value = $("modelSelect").value;
+  const value = $("modelSearch").dataset.value || "";
   selectedModel = value ? splitModelValue(value) : null;
   localStorage.setItem("historyBrowser:model", JSON.stringify(selectedModel));
+  renderModels();
+}
+
+function searchModels() {
+  $("modelSearch").dataset.value = "";
+  renderModelMenu(true);
+}
+
+function resetModel() {
+  selectedModel = null;
+  $("modelSearch").dataset.value = "";
+  localStorage.setItem("historyBrowser:model", JSON.stringify(selectedModel));
+  renderModels();
+}
+
+function renderModelMenu(open = false) {
+  const search = $("modelSearch");
+  const menu = $("modelMenu");
+  const needle = search.value.trim().toLowerCase();
+  const selectedValue = selectedModel ? modelValue(selectedModel) : "";
+  const matches = modelOptions
+    .filter((model) => !needle || model.label.toLowerCase().includes(needle) || model.providerID.toLowerCase().includes(needle) || model.modelID.toLowerCase().includes(needle))
+    .slice(0, 40);
+  menu.classList.toggle("visible", open || document.activeElement === search);
+  if (!matches.length) {
+    menu.innerHTML = '<div class="model-empty">No matching models</div>';
+    return;
+  }
+  menu.innerHTML = matches.map((model) => {
+    const value = modelValue(model);
+    const selected = value === selectedValue ? " selected" : "";
+    const badge = model.default ? '<span class="model-badge">default</span>' : "";
+    return `
+      <button class="model-option${selected}" type="button" data-model-value="${escapeHtml(value)}">
+        <span class="model-label">${escapeHtml(model.label)}</span>
+        ${badge}
+      </button>
+    `;
+  }).join("");
+  for (const option of menu.querySelectorAll("[data-model-value]")) {
+    option.addEventListener("click", () => {
+      search.dataset.value = option.dataset.modelValue;
+      selectedModel = splitModelValue(option.dataset.modelValue);
+      localStorage.setItem("historyBrowser:model", JSON.stringify(selectedModel));
+      renderModels();
+      menu.classList.remove("visible");
+    });
+  }
 }
 
 function modelValue(model) {
@@ -615,7 +663,17 @@ $("sideRename").onclick = rename;
 $("sideDelete").onclick = deleteCurrent;
 $("selectModeBtn").onclick = toggleSelectMode;
 $("deleteSelectedBtn").onclick = deleteSelected;
-$("modelSelect").onchange = changeModel;
+$("modelSearch").addEventListener("input", searchModels);
+$("modelSearch").addEventListener("focus", () => renderModelMenu(true));
+$("modelSearch").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    const first = $("modelMenu").querySelector("[data-model-value]");
+    if (first) first.click();
+  }
+  if (event.key === "Escape") $("modelMenu").classList.remove("visible");
+});
+$("modelReset").onclick = resetModel;
 $("themeSelect").onchange = changeTheme;
 $("attachBtn").onclick = openImagePicker;
 $("imageInput").addEventListener("change", (event) => {
@@ -648,6 +706,9 @@ document.addEventListener("keydown", (event) => {
   event.preventDefault();
   abortPrompt(activePromptSessionID);
 });
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".model-picker")) $("modelMenu").classList.remove("visible");
+});
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 window.addEventListener("pagehide", notifyBrowserClose);
 
@@ -660,6 +721,6 @@ loadSessions().catch((error) => {
   $("empty").innerHTML = `<div class="new-chat-box"><div class="new-chat-title">Load failed</div><p>${escapeHtml(error.message)}</p></div>`;
 });
 loadModels().catch(() => {
-  $("modelSelect").innerHTML = '<option value="">Follow OpenCode</option>';
+  $("modelSearch").placeholder = "Follow OpenCode";
 });
 loadPermissions().catch(() => {});

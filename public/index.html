@@ -80,10 +80,12 @@
 
             <div class="details-card">
               <div class="details-title">Browser settings</div>
-              <label class="field-label" for="modelSelect">Model</label>
-              <select id="modelSelect" class="select-input">
-                <option value="">Follow OpenCode</option>
-              </select>
+              <label class="field-label" for="modelSearch">Model</label>
+              <div class="model-picker">
+                <input id="modelSearch" class="select-input" placeholder="Search models" autocomplete="off" />
+                <div id="modelMenu" class="model-menu"></div>
+              </div>
+              <button id="modelReset" class="small-button wide">Follow OpenCode</button>
               <label class="field-label" for="themeSelect">Theme</label>
               <select id="themeSelect" class="select-input">
                 <option value="system">System</option>
