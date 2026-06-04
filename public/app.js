@@ -13,6 +13,8 @@ let liveRefreshTicks = 0;
 let modelOptions = [];
 let selectedModel = readStoredJson("historyBrowser:model", null);
 let selectedTheme = localStorage.getItem("historyBrowser:theme") || "system";
+let attachments = [];
+let permissions = [];
 const selectedIds = new Set();
 const apiToken = new URLSearchParams(window.location.search).get("token") || "";
 const promptPollMs = 1500;
@@ -101,6 +103,7 @@ function renderCurrent() {
   $("sideSnapshot").disabled = !current;
   $("promptInput").placeholder = current ? "Message this chat" : "Start a new chat";
   $("sendBtn").disabled = sending;
+  renderPermissions();
 
   if (!current) {
     $("meta").textContent = "No chat selected";
@@ -260,6 +263,55 @@ async function loadModels() {
   renderModels();
 }
 
+async function loadPermissions() {
+  const data = await request("/api/permissions");
+  permissions = Array.isArray(data.permissions) ? data.permissions : [];
+  renderPermissions();
+}
+
+function renderPermissions() {
+  const panel = $("permissionPanel");
+  const visiblePermissions = permissions.filter((item) => !current || !item.sessionID || item.sessionID === current.id);
+  panel.classList.toggle("visible", visiblePermissions.length > 0);
+  if (!visiblePermissions.length) {
+    panel.innerHTML = "";
+    return;
+  }
+  panel.innerHTML = visiblePermissions.map((item) => `
+    <div class="permission-card" data-permission-id="${escapeHtml(item.id)}">
+      <div class="permission-title">Permission required: ${escapeHtml(item.permission)}</div>
+      <div class="permission-detail">${escapeHtml(item.summary || item.patterns?.join(", ") || "")}</div>
+      <div class="permission-actions">
+        <button class="small-button primary" data-permission-reply="once">Allow once</button>
+        <button class="small-button" data-permission-reply="always">Always allow</button>
+        <button class="small-button danger" data-permission-reply="reject">Reject</button>
+      </div>
+    </div>
+  `).join("");
+  for (const button of panel.querySelectorAll("[data-permission-reply]")) {
+    button.addEventListener("click", () => {
+      const card = button.closest("[data-permission-id]");
+      replyPermission(card?.dataset.permissionId, button.dataset.permissionReply);
+    });
+  }
+}
+
+async function replyPermission(id, reply) {
+  if (!id || !reply) return;
+  setComposerStatus("Sending permission reply...");
+  try {
+    await request(`/api/permissions/${encodeURIComponent(id)}/reply`, {
+      method: "POST",
+      body: JSON.stringify({ reply }),
+    });
+    await loadPermissions();
+    if (current) await refreshCurrentSession({ force: true, refreshList: true });
+    setComposerStatus("");
+  } catch (error) {
+    setComposerStatus(error.message);
+  }
+}
+
 function renderModels() {
   const select = $("modelSelect");
   select.innerHTML = '<option value="">Follow OpenCode</option>';
@@ -309,7 +361,8 @@ async function sendPrompt(event) {
   }
   if (sending) return;
   const text = $("promptInput").value.trim();
-  if (!text) return;
+  const files = attachments.map(({ filename, mime, url }) => ({ filename, mime, url }));
+  if (!text && !files.length) return;
   const optimisticSessionID = current?.id;
   const beforeSignature = messageSignature(current);
   sending = true;
@@ -325,13 +378,15 @@ async function sendPrompt(event) {
     }
     $("promptInput").value = "";
     if (optimisticSessionID === sessionID && current) {
-      current.messages.push({ id: "", role: "user", created: Date.now(), text, extras: [] });
+      current.messages.push({ id: "", role: "user", created: Date.now(), text: text || "[Image]", extras: files.map((file) => file.filename) });
       renderCurrent();
     }
     const result = await request(`/api/sessions/${encodeURIComponent(sessionID)}/prompt`, {
       method: "POST",
-      body: JSON.stringify({ text, model: selectedModel || undefined }),
+      body: JSON.stringify({ text, files, model: selectedModel || undefined }),
     });
+    attachments = [];
+    renderAttachments();
     setComposerStatus(result.method === "tui" ? "Submitted to OpenCode" : "Submitted");
     await loadSessions();
     await selectSession(sessionID);
@@ -430,6 +485,7 @@ async function refreshCurrentSession({ force = false, refreshList = false } = {}
       renderSessions();
     }
     if (refreshList) await loadSessions();
+    await loadPermissions();
   } finally {
     liveRefreshInFlight = false;
   }
@@ -480,6 +536,50 @@ function resizePrompt() {
   $("promptInput").style.height = `${Math.min($("promptInput").scrollHeight, 140)}px`;
 }
 
+function openImagePicker() {
+  $("imageInput").click();
+}
+
+async function addImages(files) {
+  const images = [...files].filter((file) => file.type.startsWith("image/")).slice(0, 8 - attachments.length);
+  for (const file of images) {
+    const url = await readFileAsDataUrl(file);
+    attachments.push({
+      filename: file.name || "image",
+      mime: file.type || "image/png",
+      url,
+    });
+  }
+  renderAttachments();
+}
+
+function renderAttachments() {
+  const list = $("attachmentList");
+  list.classList.toggle("visible", attachments.length > 0);
+  list.innerHTML = attachments.map((file, index) => `
+    <div class="attachment-chip">
+      <img src="${escapeHtml(file.url)}" alt="" />
+      <span class="attachment-name">${escapeHtml(file.filename)}</span>
+      <button class="attachment-remove" type="button" data-attachment-index="${index}" aria-label="Remove attachment">x</button>
+    </div>
+  `).join("");
+  for (const button of list.querySelectorAll("[data-attachment-index]")) {
+    button.addEventListener("click", () => {
+      attachments.splice(Number(button.dataset.attachmentIndex), 1);
+      renderAttachments();
+    });
+  }
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Failed to read image."));
+    reader.readAsDataURL(file);
+  });
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -496,8 +596,18 @@ function readStoredJson(key, fallback) {
   }
 }
 
+function heartbeat() {
+  request("/api/heartbeat", { method: "POST" }).catch(() => {});
+}
+
+function notifyBrowserClose() {
+  if (!apiToken || !navigator.sendBeacon) return;
+  navigator.sendBeacon(`/api/browser-close?token=${encodeURIComponent(apiToken)}`);
+}
+
 $("refresh").onclick = loadSessions;
 $("openNewBtn").onclick = openNew;
+$("newChatBtn").onclick = openNew;
 $("sideContinue").onclick = openCurrent;
 $("sideSnapshot").onclick = createSnapshot;
 $("sidePin").onclick = togglePin;
@@ -507,12 +617,23 @@ $("selectModeBtn").onclick = toggleSelectMode;
 $("deleteSelectedBtn").onclick = deleteSelected;
 $("modelSelect").onchange = changeModel;
 $("themeSelect").onchange = changeTheme;
+$("attachBtn").onclick = openImagePicker;
+$("imageInput").addEventListener("change", (event) => {
+  addImages(event.target.files || []).catch((error) => setComposerStatus(error.message));
+  event.target.value = "";
+});
 $("composer").onsubmit = sendPrompt;
 $("search").addEventListener("input", () => {
   clearTimeout(window.__searchTimer);
   window.__searchTimer = setTimeout(loadSessions, 180);
 });
 $("promptInput").addEventListener("input", resizePrompt);
+$("promptInput").addEventListener("paste", (event) => {
+  const files = [...(event.clipboardData?.files || [])].filter((file) => file.type.startsWith("image/"));
+  if (!files.length) return;
+  event.preventDefault();
+  addImages(files).catch((error) => setComposerStatus(error.message));
+});
 $("promptInput").addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
@@ -528,8 +649,12 @@ document.addEventListener("keydown", (event) => {
   abortPrompt(activePromptSessionID);
 });
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+window.addEventListener("pagehide", notifyBrowserClose);
 
 applyTheme();
+heartbeat();
+window.setInterval(heartbeat, 10000);
+window.setInterval(() => loadPermissions().catch(() => {}), promptPollMs);
 renderCurrent();
 loadSessions().catch((error) => {
   $("empty").innerHTML = `<div class="new-chat-box"><div class="new-chat-title">Load failed</div><p>${escapeHtml(error.message)}</p></div>`;
@@ -537,3 +662,4 @@ loadSessions().catch((error) => {
 loadModels().catch(() => {
   $("modelSelect").innerHTML = '<option value="">Follow OpenCode</option>';
 });
+loadPermissions().catch(() => {});

@@ -16,6 +16,9 @@ const execFileAsync = promisify(execFile);
 let server;
 let serverUrl;
 let serverToken;
+let serverIdleTimer;
+let lastBrowserSeen = 0;
+const serverIdleMs = 2 * 60 * 1000;
 
 async function tui(api) {
   const start = async () => {
@@ -79,6 +82,7 @@ async function tui(api) {
 async function ensureServer(api) {
   if (server?.listening && serverUrl) return serverUrl;
 
+  lastBrowserSeen = Date.now();
   server = createServer((request, response) => {
     handleRequest(api, request, response).catch((error) => {
       sendJson(response, { error: errorMessage(error) }, 500);
@@ -88,6 +92,7 @@ async function ensureServer(api) {
   const port = await listenOnAvailablePort(server, 8765);
   serverToken = randomBytes(18).toString("base64url");
   serverUrl = `http://127.0.0.1:${port}/?token=${serverToken}`;
+  startIdleMonitor();
   return serverUrl;
 }
 
@@ -140,6 +145,16 @@ async function handleRequest(api, request, response) {
   if (url.pathname.startsWith("/api/") && !isAuthorized(request, url)) {
     return sendJson(response, { error: "Unauthorized history browser request" }, 401);
   }
+  if (url.pathname.startsWith("/api/")) markBrowserSeen();
+
+  if (request.method === "POST" && url.pathname === "/api/heartbeat") {
+    return sendJson(response, { ok: true });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/browser-close") {
+    lastBrowserSeen = 0;
+    return sendJson(response, { ok: true });
+  }
 
   if (request.method === "GET" && url.pathname === "/api/sessions") {
     const query = url.searchParams.get("q") || "";
@@ -150,6 +165,20 @@ async function handleRequest(api, request, response) {
   if (request.method === "GET" && url.pathname === "/api/models") {
     const models = await listModels(api);
     return sendJson(response, { models });
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/permissions") {
+    const permissions = await listPermissions(api);
+    return sendJson(response, { permissions });
+  }
+
+  if (request.method === "POST" && url.pathname.startsWith("/api/permissions/")) {
+    const requestID = decodeURIComponent(url.pathname.slice("/api/permissions/".length).replace(/\/reply$/, ""));
+    const body = await readJson(request);
+    const reply = ["once", "always", "reject"].includes(body.reply) ? body.reply : "";
+    if (!requestID || !reply) return sendJson(response, { error: "Invalid permission reply" }, 400);
+    await assertOk(api.client.permission.reply({ requestID, reply }));
+    return sendJson(response, { ok: true, requestID, reply });
   }
 
   if (request.method === "GET" && url.pathname.startsWith("/api/sessions/")) {
@@ -224,10 +253,11 @@ async function handleRequest(api, request, response) {
     if (action === "prompt") {
       const body = await readJson(request);
       const text = String(body.text || "").trim();
-      if (!text) return sendJson(response, { error: "Message is empty" }, 400);
+      const files = normalizePromptFiles(body.files);
+      if (!text && !files.length) return sendJson(response, { error: "Message is empty" }, 400);
       await assertOk(api.client.tui.selectSession({ sessionID }));
       const model = normalizeModelObject(body.model);
-      const result = await promptSession(api, { sessionID, text, model });
+      const result = await promptSession(api, { sessionID, text, model, files });
       return sendJson(response, { ok: true, sessionID, method: result.method, model: result.model });
     }
   }
@@ -444,8 +474,8 @@ function compact(text) {
   return String(text).replace(/\s+/g, " ").trim().slice(0, 220);
 }
 
-async function promptSession(api, { sessionID, text, model }) {
-  if (!model && api.client.tui?.appendPrompt && api.client.tui?.submitPrompt) {
+async function promptSession(api, { sessionID, text, model, files = [] }) {
+  if (!model && !files.length && api.client.tui?.appendPrompt && api.client.tui?.submitPrompt) {
     await assertOk(api.client.tui.selectSession({ sessionID }));
     if (api.client.tui.clearPrompt) await assertOk(api.client.tui.clearPrompt({}));
     await assertOk(api.client.tui.appendPrompt({ text }));
@@ -455,13 +485,31 @@ async function promptSession(api, { sessionID, text, model }) {
 
   const payload = {
     sessionID,
-    parts: [{ type: "text", text }],
+    parts: [
+      ...(text ? [{ type: "text", text }] : []),
+      ...files,
+    ],
   };
   const selectedModel = model || await promptModel(api, sessionID);
   if (selectedModel) payload.model = selectedModel;
   const method = api.client.session.promptAsync || api.client.session.prompt;
   await assertOk(method.call(api.client.session, payload));
   return { method: "session", model: selectedModel };
+}
+
+function normalizePromptFiles(files) {
+  if (!Array.isArray(files)) return [];
+  return files.slice(0, 8).map((file) => {
+    const mime = String(file?.mime || "");
+    const url = String(file?.url || "");
+    if (!mime.startsWith("image/") || !url.startsWith("data:image/")) return undefined;
+    return {
+      type: "file",
+      mime,
+      filename: String(file.filename || "image"),
+      url,
+    };
+  }).filter(Boolean);
 }
 
 async function listModels(api) {
@@ -500,6 +548,38 @@ async function listModels(api) {
     return a.label.localeCompare(b.label);
   });
   return rows;
+}
+
+async function listPermissions(api) {
+  try {
+    const result = await assertOk(api.client.permission.list({}));
+    return (Array.isArray(result) ? result : []).map(permissionRow);
+  } catch {
+    return [];
+  }
+}
+
+function permissionRow(item) {
+  const metadata = item?.metadata && typeof item.metadata === "object" ? item.metadata : {};
+  return {
+    id: item?.id || "",
+    sessionID: item?.sessionID || "",
+    permission: item?.permission || "permission",
+    patterns: Array.isArray(item?.patterns) ? item.patterns.map(String) : [],
+    always: Array.isArray(item?.always) ? item.always.map(String) : [],
+    tool: item?.tool || undefined,
+    metadata,
+    summary: permissionSummary(item?.permission, item?.patterns, metadata),
+  };
+}
+
+function permissionSummary(permission, patterns, metadata) {
+  const details = [];
+  if (Array.isArray(patterns) && patterns.length) details.push(patterns.join(", "));
+  for (const [key, value] of Object.entries(metadata || {})) {
+    if (["command", "path", "file", "url", "description"].includes(key.toLowerCase())) details.push(`${key}: ${String(value)}`);
+  }
+  return details.length ? details.join(" | ") : String(permission || "Permission requested");
 }
 
 async function promptModel(api, sessionID) {
@@ -635,6 +715,30 @@ function isAuthorized(request, url) {
   if (!serverToken) return false;
   const header = request.headers["x-history-browser-token"];
   return header === serverToken || url.searchParams.get("token") === serverToken;
+}
+
+function markBrowserSeen() {
+  lastBrowserSeen = Date.now();
+}
+
+function startIdleMonitor() {
+  if (serverIdleTimer) clearInterval(serverIdleTimer);
+  serverIdleTimer = setInterval(() => {
+    if (!server?.listening || !lastBrowserSeen) return closeServer();
+    if (Date.now() - lastBrowserSeen > serverIdleMs) closeServer();
+  }, 15000);
+}
+
+function closeServer() {
+  if (serverIdleTimer) {
+    clearInterval(serverIdleTimer);
+    serverIdleTimer = undefined;
+  }
+  if (server?.listening) server.close();
+  server = undefined;
+  serverUrl = undefined;
+  serverToken = undefined;
+  lastBrowserSeen = 0;
 }
 
 function openUrl(url) {

@@ -108,6 +108,12 @@ button:disabled {
   flex: 0 0 auto;
 }
 
+.brand-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .brand h1 {
   margin: 0;
   font-size: 16px;
@@ -343,6 +349,43 @@ button:disabled {
   flex: 1 1 auto;
 }
 
+.permission-panel {
+  display: none;
+  border: 1px solid #d8b860;
+  background: #fff9df;
+  border-radius: var(--radius-md);
+  padding: 10px;
+  margin: 0 0 10px;
+  box-shadow: var(--shadow);
+}
+
+:root[data-theme="dark"] .permission-panel {
+  background: #302a17;
+  border-color: #6c5a28;
+}
+
+.permission-panel.visible {
+  display: block;
+}
+
+.permission-title {
+  font-weight: 650;
+  margin-bottom: 4px;
+}
+
+.permission-detail {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  margin-bottom: 8px;
+}
+
+.permission-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .message {
   max-width: min(980px, 96%);
   margin: 0 0 14px;
@@ -446,7 +489,7 @@ button:disabled {
 
 .composer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 10px;
   align-items: end;
   border: 1px solid var(--line);
@@ -463,6 +506,60 @@ button:disabled {
   color: var(--muted);
   font-size: 12px;
   padding: 0 4px;
+}
+
+.attachment-list {
+  grid-column: 1 / -1;
+  display: none;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.attachment-list.visible {
+  display: flex;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 220px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  padding: 5px 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.attachment-chip img {
+  width: 24px;
+  height: 24px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-remove {
+  border: 0;
+  background: transparent;
+  padding: 0 2px;
+  min-width: 18px;
+  min-height: 18px;
+  color: var(--muted);
+}
+
+.attach-button {
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: var(--radius-md);
+  font-size: 20px;
+  line-height: 1;
 }
 
 .prompt-input {
