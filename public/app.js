@@ -131,8 +131,8 @@ function renderCurrent() {
     node.innerHTML = `
       <div class="role">${message.role === "user" ? "You" : "OpenCode"}</div>
       <div class="bubble">
-        ${text ? `<div class="message-text">${escapeHtml(text)}</div>` : ""}
-        ${message.extras.length ? `<div class="extra">${escapeHtml(message.extras.join(" | "))}</div>` : ""}
+        <div class="content">${text ? escapeHtml(text) : ""}</div>
+        ${message.extras.length ? `<div class="status-bar">${escapeHtml(message.extras.join(" | "))}</div>` : ""}
       </div>
     `;
     $("messages").appendChild(node);
