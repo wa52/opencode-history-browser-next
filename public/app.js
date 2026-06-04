@@ -125,7 +125,8 @@ function renderCurrent() {
   for (const message of current.messages) {
     if (!message.text && !message.extras.length) continue;
     const node = document.createElement("article");
-    node.className = `message ${message.role}`;
+    const metadataOnly = !message.text && message.extras.length;
+    node.className = `message ${message.role}${metadataOnly ? " metadata-only" : ""}`;
     node.innerHTML = `
       <div class="role">${message.role === "user" ? "You" : "OpenCode"}</div>
       <div class="bubble">
@@ -351,7 +352,11 @@ function renderModelMenu(open = false) {
   const selectedValue = selectedModel ? modelValue(selectedModel) : "";
   const matches = modelOptions
     .filter((model) => !needle || model.label.toLowerCase().includes(needle) || model.providerID.toLowerCase().includes(needle) || model.modelID.toLowerCase().includes(needle))
-    .slice(0, 40);
+    .sort((a, b) => {
+      if (a.default && !b.default) return -1;
+      if (!a.default && b.default) return 1;
+      return a.label.localeCompare(b.label);
+    });
   menu.classList.toggle("visible", open || document.activeElement === search);
   if (!matches.length) {
     menu.innerHTML = '<div class="model-empty">No matching models</div>';
