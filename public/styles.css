@@ -415,11 +415,15 @@ button:disabled {
   border: 1px solid var(--line);
   background: var(--assistant);
   border-radius: var(--radius-lg);
-  padding: 13px 15px;
-  line-height: 1.62;
+  padding: 12px 14px;
+  line-height: 1.52;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   box-shadow: 0 5px 18px rgba(25, 25, 20, 0.04);
+}
+
+.message-text {
+  margin: 0;
 }
 
 .message.user .bubble {
@@ -451,7 +455,7 @@ button:disabled {
 .extra {
   color: var(--muted);
   font-size: 12px;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 .message.metadata-only .extra {
@@ -531,13 +535,13 @@ button:disabled {
 }
 
 .settings-card {
-  padding: 0;
-  overflow: clip;
+  padding: 10px;
+  overflow: hidden;
 }
 
 .settings-card > .details-title {
-  margin: 0;
-  padding: 10px 11px;
+  margin: -2px 0 8px;
+  padding: 0;
   cursor: pointer;
   list-style: none;
 }
@@ -557,13 +561,8 @@ button:disabled {
   content: "-";
 }
 
-.settings-card > :not(summary) {
-  margin-left: 10px;
-  margin-right: 10px;
-}
-
 .settings-card > :last-child {
-  margin-bottom: 11px;
+  margin-bottom: 0;
 }
 
 .field-label {
@@ -577,7 +576,8 @@ button:disabled {
   display: block;
   width: 100%;
   max-width: 100%;
-  min-height: 32px;
+  height: 36px;
+  min-height: 36px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--panel);
@@ -657,9 +657,11 @@ button:disabled {
 }
 
 #modelReset {
-  min-height: 30px;
+  height: 36px;
+  min-height: 36px;
   margin-top: 7px;
   font-size: 12px;
+  border-radius: var(--radius-sm);
 }
 
 .composer {

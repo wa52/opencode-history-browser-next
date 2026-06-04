@@ -125,12 +125,13 @@ function renderCurrent() {
   for (const message of current.messages) {
     if (!message.text && !message.extras.length) continue;
     const node = document.createElement("article");
-    const metadataOnly = !message.text && message.extras.length;
+    const text = cleanMessageText(message.text || "");
+    const metadataOnly = !text && message.extras.length;
     node.className = `message ${message.role}${metadataOnly ? " metadata-only" : ""}`;
     node.innerHTML = `
       <div class="role">${message.role === "user" ? "You" : "OpenCode"}</div>
       <div class="bubble">
-        ${escapeHtml(message.text || "")}
+        ${text ? `<div class="message-text">${escapeHtml(text)}</div>` : ""}
         ${message.extras.length ? `<div class="extra">${escapeHtml(message.extras.join(" | "))}</div>` : ""}
       </div>
     `;
@@ -606,6 +607,21 @@ async function addImages(files) {
   renderAttachments();
 }
 
+function imageFilesFromClipboard(event) {
+  const files = [...(event.clipboardData?.files || [])].filter((file) => file.type.startsWith("image/"));
+  const itemFiles = [...(event.clipboardData?.items || [])]
+    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+    .map((item) => item.getAsFile())
+    .filter(Boolean);
+  const seen = new Set();
+  return [...files, ...itemFiles].filter((file) => {
+    const key = `${file.name}:${file.size}:${file.type}:${file.lastModified}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function renderAttachments() {
   const list = $("attachmentList");
   list.classList.toggle("visible", attachments.length > 0);
@@ -639,6 +655,14 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function cleanMessageText(value) {
+  return String(value)
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function readStoredJson(key, fallback) {
@@ -691,12 +715,15 @@ $("search").addEventListener("input", () => {
   window.__searchTimer = setTimeout(loadSessions, 180);
 });
 $("promptInput").addEventListener("input", resizePrompt);
-$("promptInput").addEventListener("paste", (event) => {
-  const files = [...(event.clipboardData?.files || [])].filter((file) => file.type.startsWith("image/"));
+$("promptInput").addEventListener("paste", handleImagePaste);
+document.addEventListener("paste", handleImagePaste);
+function handleImagePaste(event) {
+  const files = imageFilesFromClipboard(event);
   if (!files.length) return;
   event.preventDefault();
+  event.stopPropagation();
   addImages(files).catch((error) => setComposerStatus(error.message));
-});
+}
 $("promptInput").addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
