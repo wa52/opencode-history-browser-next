@@ -55,7 +55,7 @@
           </section>
 
           <aside class="details">
-            <div class="details-card">
+            <div class="details-card session-card">
               <div class="details-title">Session</div>
               <dl>
                 <dt>Status</dt>
@@ -69,17 +69,19 @@
               </dl>
             </div>
 
-            <div class="details-card">
+            <div class="details-card actions-card">
               <div class="details-title">Quick actions</div>
-              <button id="sideContinue" class="primary wide" disabled>Continue chat</button>
-              <button id="sideSnapshot" class="wide" disabled>Balanced snapshot</button>
-              <button id="sidePin" class="wide" disabled>Pin</button>
-              <button id="sideRename" class="wide" disabled>Rename</button>
-              <button id="sideDelete" class="danger wide" disabled>Delete</button>
+              <div class="action-grid">
+                <button id="sideContinue" class="primary wide" disabled>Continue</button>
+                <button id="sideSnapshot" class="wide" disabled>Snapshot</button>
+                <button id="sidePin" class="wide" disabled>Pin</button>
+                <button id="sideRename" class="wide" disabled>Rename</button>
+                <button id="sideDelete" class="danger wide" disabled>Delete</button>
+              </div>
             </div>
 
-            <div class="details-card">
-              <div class="details-title">Browser settings</div>
+            <details class="details-card settings-card">
+              <summary class="details-title">Browser settings</summary>
               <label class="field-label" for="modelSearch">Model</label>
               <div class="model-picker">
                 <input id="modelSearch" class="select-input" placeholder="Search models" autocomplete="off" />
@@ -92,7 +94,7 @@
                 <option value="light">Light</option>
                 <option value="dark">Dark</option>
               </select>
-            </div>
+            </details>
           </aside>
         </div>
       </section>
