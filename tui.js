@@ -18,9 +18,12 @@ let serverUrl;
 let serverToken;
 let serverIdleTimer;
 let lastBrowserSeen = 0;
+let shutdownHandlersRegistered = false;
+const serverSockets = new Set();
 const serverIdleMs = 2 * 60 * 1000;
 
 async function tui(api) {
+  registerShutdownHandlers();
   const start = async () => {
     serverUrl = await ensureServer(api);
     openUrl(serverUrl);
@@ -88,6 +91,11 @@ async function ensureServer(api) {
       sendJson(response, { error: errorMessage(error) }, 500);
     });
   });
+  server.on("connection", (socket) => {
+    serverSockets.add(socket);
+    socket.on("close", () => serverSockets.delete(socket));
+  });
+  server.on("close", () => serverSockets.clear());
 
   const port = await listenOnAvailablePort(server, 8765);
   serverToken = randomBytes(18).toString("base64url");
@@ -727,6 +735,7 @@ function startIdleMonitor() {
     if (!server?.listening || !lastBrowserSeen) return closeServer();
     if (Date.now() - lastBrowserSeen > serverIdleMs) closeServer();
   }, 15000);
+  serverIdleTimer.unref?.();
 }
 
 function closeServer() {
@@ -734,11 +743,25 @@ function closeServer() {
     clearInterval(serverIdleTimer);
     serverIdleTimer = undefined;
   }
+  for (const socket of serverSockets) socket.destroy();
+  serverSockets.clear();
   if (server?.listening) server.close();
   server = undefined;
   serverUrl = undefined;
   serverToken = undefined;
   lastBrowserSeen = 0;
+}
+
+function registerShutdownHandlers() {
+  if (shutdownHandlersRegistered) return;
+  shutdownHandlersRegistered = true;
+  process.once("exit", closeServer);
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+    process.once(signal, () => {
+      closeServer();
+      process.exit(0);
+    });
+  }
 }
 
 function openUrl(url) {
