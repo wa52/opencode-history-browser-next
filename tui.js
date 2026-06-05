@@ -1074,5 +1074,5 @@ async function startBrowserHost(api) {
   return { url, close: closeServer };
 }
 
-export { startBrowserHost };
+export { ensureBrowserLauncher, ensureCommandRedirect, startBrowserHost };
 export default { id, tui };
