@@ -226,7 +226,7 @@ async function handleRequest(api, request, response) {
       if (result.error || !result.data) return sendJson(response, { error: "Session not found" }, 404);
       directory = result.data.directory || directory;
     }
-    openOpenCodeTerminal({ directory, sessionID });
+    await openOpenCodeTerminal({ directory, sessionID });
     return sendJson(response, { ok: true, sessionID, directory });
   }
 
@@ -982,37 +982,53 @@ function openUrl(url) {
   spawn("xdg-open", [url], { detached: true, stdio: "ignore" }).unref();
 }
 
-function openOpenCodeTerminal({ directory, sessionID }) {
+async function openOpenCodeTerminal({ directory, sessionID }) {
   const args = sessionID ? ["--session", sessionID] : [];
   if (process.platform === "win32") {
     const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
+    const localAppData = process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local");
+    const executable = join(appData, "npm", "node_modules", "opencode-ai", "bin", "opencode.exe");
     const cliCommand = join(appData, "npm", "opencode-cli.cmd");
-    const installedCommand = existsSync(cliCommand) ? cliCommand : join(appData, "npm", "opencode.cmd");
-    const command = existsSync(installedCommand) ? installedCommand : "opencode";
-    const commandLine = [quoteCmdArgument(command), ...args.map(quoteCmdArgument)].join(" ");
-    spawn("cmd.exe", ["/d", "/k", commandLine], {
-      cwd: existsSync(directory) ? directory : homedir(),
-      detached: true,
-      stdio: "ignore",
-      windowsHide: false,
-      env: { ...process.env, OPENCODE_HISTORY_CLI: "1" },
-    }).unref();
+    const command = existsSync(executable) ? executable : cliCommand;
+    const cwd = existsSync(directory) ? directory : homedir();
+    const terminal = join(localAppData, "Microsoft", "WindowsApps", "wt.exe");
+    const env = { ...process.env, OPENCODE_HISTORY_CLI: "1" };
+    if (existsSync(terminal)) {
+      await spawnVisible(terminal, ["-w", "new", "-d", cwd, command, ...args], { cwd, env });
+      return;
+    }
+    const commandLine = ["start", '"OpenCode CLI"', quoteCmdArgument(command), ...args.map(quoteCmdArgument)].join(" ");
+    await spawnVisible("cmd.exe", ["/d", "/c", commandLine], { cwd, env });
     return;
   }
   const terminal = process.platform === "darwin" ? "open" : "x-terminal-emulator";
   const terminalArgs = process.platform === "darwin"
     ? ["-a", "Terminal", directory]
     : ["-e", "opencode", ...args];
-  spawn(terminal, terminalArgs, {
+  await spawnVisible(terminal, terminalArgs, {
     cwd: existsSync(directory) ? directory : homedir(),
-    detached: true,
-    stdio: "ignore",
     env: { ...process.env, OPENCODE_HISTORY_CLI: "1" },
-  }).unref();
+  });
 }
 
 function quoteCmdArgument(value) {
   return `"${String(value).replaceAll('"', '""')}"`;
+}
+
+function spawnVisible(command, args, options) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      ...options,
+      detached: true,
+      stdio: "ignore",
+      windowsHide: false,
+    });
+    child.once("error", reject);
+    child.once("spawn", () => {
+      child.unref();
+      resolve();
+    });
+  });
 }
 
 async function uninstallSelf(api) {
