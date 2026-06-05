@@ -18,11 +18,13 @@ const child = spawn(resolveOpenCode(), ["serve", "--hostname=127.0.0.1", `--port
 });
 
 await waitForServer(child, port);
-const client = createOpencodeClient({ baseUrl: `http://127.0.0.1:${port}` });
+const opencodeUrl = `http://127.0.0.1:${port}`;
+const client = createOpencodeClient({ baseUrl: opencodeUrl });
 const store = await readStore();
 await startBrowserHost({
   client,
   headless: true,
+  opencodeUrl,
   kv: {
     get(key, fallback) {
       return key in store ? store[key] : fallback;

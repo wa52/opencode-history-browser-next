@@ -226,7 +226,7 @@ async function handleRequest(api, request, response) {
       if (result.error || !result.data) return sendJson(response, { error: "Session not found" }, 404);
       directory = result.data.directory || directory;
     }
-    await openOpenCodeTerminal({ directory, sessionID });
+    await openOpenCodeTerminal({ directory, sessionID, serverUrl: api.opencodeUrl });
     return sendJson(response, { ok: true, sessionID, directory });
   }
 
@@ -909,10 +909,11 @@ async function ensureBrowserLauncher() {
   const configDir = join(homedir(), ".config", "opencode");
   await mkdir(configDir, { recursive: true });
   const launcher = join(configDir, "OpenCode Browser.vbs");
+  const nodeExecutable = resolveNodeExecutable();
   const script = [
     'Set shell = CreateObject("WScript.Shell")',
     'shell.Environment("Process")("OPENCODE_BROWSER_MODE") = "1"',
-    `shell.Run Chr(34) & "${process.execPath.replaceAll('"', '""')}" & Chr(34) & " " & Chr(34) & "${join(root, "standalone.js").replaceAll('"', '""')}" & Chr(34), 0, False`,
+    `shell.Run Chr(34) & "${nodeExecutable.replaceAll('"', '""')}" & Chr(34) & " " & Chr(34) & "${join(root, "standalone.js").replaceAll('"', '""')}" & Chr(34), 0, False`,
     "",
   ].join("\r\n");
   const candidates = [
@@ -921,6 +922,16 @@ async function ensureBrowserLauncher() {
   ].filter((desktop, index, values) => desktop && existsSync(desktop) && values.indexOf(desktop) === index);
   await writeFile(launcher, script, "utf8");
   await Promise.all(candidates.map((desktop) => writeFile(join(desktop, "OpenCode Browser.vbs"), script, "utf8")));
+}
+
+function resolveNodeExecutable() {
+  if (process.platform !== "win32") return process.execPath;
+  const candidates = [
+    process.env.NODE,
+    process.env.ProgramFiles ? join(process.env.ProgramFiles, "nodejs", "node.exe") : "",
+    process.env["ProgramFiles(x86)"] ? join(process.env["ProgramFiles(x86)"], "nodejs", "node.exe") : "",
+  ].filter(Boolean);
+  return candidates.find((candidate) => existsSync(candidate)) || "node.exe";
 }
 
 async function ensureCommandRedirect() {
@@ -982,8 +993,10 @@ function openUrl(url) {
   spawn("xdg-open", [url], { detached: true, stdio: "ignore" }).unref();
 }
 
-async function openOpenCodeTerminal({ directory, sessionID }) {
-  const args = sessionID ? ["--session", sessionID] : [];
+async function openOpenCodeTerminal({ directory, sessionID, serverUrl }) {
+  const args = serverUrl
+    ? ["attach", serverUrl, "--dir", directory, ...(sessionID ? ["--session", sessionID] : [])]
+    : (sessionID ? ["--session", sessionID] : []);
   if (process.platform === "win32") {
     const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
     const executable = join(appData, "npm", "node_modules", "opencode-ai", "bin", "opencode.exe");
