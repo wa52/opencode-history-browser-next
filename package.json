@@ -24,9 +24,6 @@
   "engines": {
     "node": ">=18"
   },
-  "scripts": {
-    "postinstall": "node ./install-redirect.js"
-  },
   "dependencies": {
     "@opencode-ai/sdk": "^1.4.17"
   }
