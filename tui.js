@@ -104,7 +104,11 @@ async function ensureServer(api) {
   server.on("close", () => serverSockets.clear());
 
   const port = await listenOnAvailablePort(server, 8765);
-  serverToken = randomBytes(18).toString("base64url");
+  serverToken = api.kv.get("history-browser:server-token", "");
+  if (!serverToken) {
+    serverToken = randomBytes(18).toString("base64url");
+    api.kv.set("history-browser:server-token", serverToken);
+  }
   serverUrl = `http://127.0.0.1:${port}/?token=${serverToken}`;
   startIdleMonitor();
   return serverUrl;
@@ -166,7 +170,7 @@ async function handleRequest(api, request, response) {
   }
 
   if (request.method === "POST" && url.pathname === "/api/browser-close") {
-    lastBrowserSeen = 0;
+    lastBrowserSeen = Date.now();
     return sendJson(response, { ok: true });
   }
 
