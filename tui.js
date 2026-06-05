@@ -986,19 +986,19 @@ async function openOpenCodeTerminal({ directory, sessionID }) {
   const args = sessionID ? ["--session", sessionID] : [];
   if (process.platform === "win32") {
     const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
-    const localAppData = process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local");
     const executable = join(appData, "npm", "node_modules", "opencode-ai", "bin", "opencode.exe");
     const cliCommand = join(appData, "npm", "opencode-cli.cmd");
     const command = existsSync(executable) ? executable : cliCommand;
     const cwd = existsSync(directory) ? directory : homedir();
-    const terminal = join(localAppData, "Microsoft", "WindowsApps", "wt.exe");
     const env = { ...process.env, OPENCODE_HISTORY_CLI: "1" };
-    if (existsSync(terminal)) {
-      await spawnVisible(terminal, ["-w", "new", "-d", cwd, command, ...args], { cwd, env });
+    try {
+      await spawnVisible("wt.exe", ["-w", "new", "-d", cwd, command, ...args], { cwd, env });
       return;
+    } catch {
+      const argumentList = args.length ? ` -ArgumentList @(${args.map(quotePowerShell).join(", ")})` : "";
+      const script = `Start-Process -FilePath ${quotePowerShell(command)}${argumentList} -WorkingDirectory ${quotePowerShell(cwd)}`;
+      await spawnVisible("powershell.exe", ["-NoProfile", "-Command", script], { cwd, env });
     }
-    const commandLine = ["start", '"OpenCode CLI"', quoteCmdArgument(command), ...args.map(quoteCmdArgument)].join(" ");
-    await spawnVisible("cmd.exe", ["/d", "/c", commandLine], { cwd, env });
     return;
   }
   const terminal = process.platform === "darwin" ? "open" : "x-terminal-emulator";
@@ -1011,8 +1011,8 @@ async function openOpenCodeTerminal({ directory, sessionID }) {
   });
 }
 
-function quoteCmdArgument(value) {
-  return `"${String(value).replaceAll('"', '""')}"`;
+function quotePowerShell(value) {
+  return `'${String(value).replaceAll("'", "''")}'`;
 }
 
 function spawnVisible(command, args, options) {
