@@ -23,6 +23,9 @@ Use `opencode-cli` when you explicitly want the original OpenCode command-line
 interface. Commands with arguments, such as `opencode plugin ...` and
 `opencode --help`, continue to use the original OpenCode executable.
 
+The browser's `Open CLI` button opens the selected session as an independent
+terminal client. Closing that terminal does not stop or reload the browser.
+
 On Windows, the plugin also creates `OpenCode Browser.vbs` on the desktop. Use
 that shortcut afterward to start the browser UI without keeping an OpenCode
 command window visible.

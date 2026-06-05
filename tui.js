@@ -14,6 +14,7 @@ const root = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(root, "public");
 const execFileAsync = promisify(execFile);
 const browserMode = process.env.OPENCODE_BROWSER_MODE === "1";
+const cliMode = process.env.OPENCODE_HISTORY_CLI === "1";
 let server;
 let serverUrl;
 let serverToken;
@@ -24,9 +25,11 @@ const serverSockets = new Set();
 const serverIdleMs = 2 * 60 * 1000;
 
 async function tui(api) {
-  registerShutdownHandlers();
-  ensureBrowserLauncher().catch(() => {});
-  ensureCommandRedirect().catch(() => {});
+  if (!cliMode) {
+    registerShutdownHandlers();
+    ensureBrowserLauncher().catch(() => {});
+    ensureCommandRedirect().catch(() => {});
+  }
   const start = async () => {
     serverUrl = await ensureServer(api);
     openUrl(serverUrl);
@@ -82,7 +85,7 @@ async function tui(api) {
     },
   ]);
 
-  setTimeout(safeStart, 1000);
+  if (!cliMode) setTimeout(safeStart, 1000);
 }
 
 async function ensureServer(api) {
@@ -992,6 +995,7 @@ function openOpenCodeTerminal({ directory, sessionID }) {
       detached: true,
       stdio: "ignore",
       windowsHide: false,
+      env: { ...process.env, OPENCODE_HISTORY_CLI: "1" },
     }).unref();
     return;
   }
@@ -1003,6 +1007,7 @@ function openOpenCodeTerminal({ directory, sessionID }) {
     cwd: existsSync(directory) ? directory : homedir(),
     detached: true,
     stdio: "ignore",
+    env: { ...process.env, OPENCODE_HISTORY_CLI: "1" },
   }).unref();
 }
 
