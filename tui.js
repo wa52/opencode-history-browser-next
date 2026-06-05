@@ -413,8 +413,14 @@ async function getSession(api, sessionID) {
   const sessionResult = await api.client.session.get({ sessionID });
   if (sessionResult.error) return undefined;
   const messagesResult = await assertOk(api.client.session.messages({ sessionID, limit: 200 }));
+  let todos = [];
+  try {
+    const todoResult = await assertOk(api.client.session.todo({ sessionID }));
+    todos = Array.isArray(todoResult) ? todoResult : [];
+  } catch {}
   const pinned = getPinned(api);
   const output = await sessionRow(api, sessionResult.data, pinned);
+  output.todos = todos;
   output.messages = (Array.isArray(messagesResult) ? messagesResult : []).map((item) => {
     const partText = (item.parts || [])
       .filter((part) => part.type === "text" && part.text)
@@ -423,7 +429,8 @@ async function getSession(api, sessionID) {
       .trim();
     const error = messageError(item.info?.error);
     const text = partText || error;
-    const extras = (item.parts || []).filter((part) => part.type && part.type !== "text").map((part) => part.type).slice(0, 8);
+    const activities = (item.parts || []).filter((part) => part.type && part.type !== "text").map(activityRow);
+    const extras = activities.map((activity) => activity.label).slice(0, 8);
     if (error && partText) extras.push(error);
     return {
       id: item.info?.id || "",
@@ -433,9 +440,78 @@ async function getSession(api, sessionID) {
       error: error || "",
       text,
       extras,
+      activities,
     };
   });
   return output;
+}
+
+function activityRow(part) {
+  if (part.type === "reasoning") {
+    return {
+      type: part.type,
+      label: part.time?.end ? "Reasoning" : "Reasoning...",
+      status: part.time?.end ? "completed" : "running",
+      detail: clipActivity(part.text),
+    };
+  }
+  if (part.type === "tool") {
+    const state = part.state || {};
+    const input = formatActivityValue(state.input);
+    const output = state.status === "error" ? state.error : state.output;
+    return {
+      type: part.type,
+      label: state.title || part.tool || "Tool",
+      status: state.status || "pending",
+      detail: [input && `Input\n${input}`, output && `Output\n${clipActivity(output)}`].filter(Boolean).join("\n\n"),
+    };
+  }
+  if (part.type === "subtask") {
+    return {
+      type: part.type,
+      label: part.description || `Subtask: ${part.agent || "agent"}`,
+      status: "running",
+      detail: clipActivity(part.prompt),
+    };
+  }
+  if (part.type === "step-start") return { type: part.type, label: "Step started", status: "running", detail: "" };
+  if (part.type === "step-finish") {
+    const tokens = part.tokens || {};
+    return {
+      type: part.type,
+      label: `Step finished: ${part.reason || "complete"}`,
+      status: "completed",
+      detail: `Tokens: ${tokens.input || 0} in / ${tokens.output || 0} out${tokens.reasoning ? ` / ${tokens.reasoning} reasoning` : ""}`,
+    };
+  }
+  if (part.type === "patch") {
+    return { type: part.type, label: `Changed ${part.files?.length || 0} file(s)`, status: "completed", detail: (part.files || []).join("\n") };
+  }
+  if (part.type === "file") {
+    return { type: part.type, label: part.filename || part.source?.path || "File", status: "completed", detail: part.mime || "" };
+  }
+  if (part.type === "retry") {
+    return { type: part.type, label: `Retry ${part.attempt || 1}`, status: "error", detail: messageError(part.error) };
+  }
+  if (part.type === "compaction") {
+    return { type: part.type, label: part.auto ? "Automatic context compaction" : "Context compaction", status: "completed", detail: part.overflow ? "Triggered by context overflow" : "" };
+  }
+  if (part.type === "agent") return { type: part.type, label: `Agent: ${part.name}`, status: "completed", detail: "" };
+  return { type: part.type, label: part.type, status: "completed", detail: "" };
+}
+
+function formatActivityValue(value) {
+  if (!value || (typeof value === "object" && !Object.keys(value).length)) return "";
+  try {
+    return clipActivity(typeof value === "string" ? value : JSON.stringify(value, null, 2));
+  } catch {
+    return clipActivity(String(value));
+  }
+}
+
+function clipActivity(value, limit = 2400) {
+  const text = String(value || "").trim();
+  return text.length > limit ? `${text.slice(0, limit)}\n...` : text;
 }
 
 function messageError(error) {

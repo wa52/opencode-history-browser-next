@@ -44,6 +44,7 @@ To verify an install:
 - Search all sessions
 - Create a Balanced context snapshot
 - Reply to OpenCode questions, choices, and permission requests
+- See reasoning stages, tool calls, tool results, and task progress
 - Paste or attach images
 - Search and select models
 - Browser commands: `/key`, `/skills`, and `/mcp`

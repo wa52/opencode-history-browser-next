@@ -109,6 +109,7 @@ function renderCurrent() {
   $("sideSnapshot").disabled = !current;
   $("promptInput").placeholder = current ? "Message this chat" : "Start a new chat";
   $("sendBtn").disabled = sending;
+  renderTasks();
   renderPermissions();
   renderQuestions();
 
@@ -130,7 +131,7 @@ function renderCurrent() {
   $("detailTokens").textContent = `${current.tokensInput || 0} in / ${current.tokensOutput || 0} out`;
 
   for (const message of current.messages) {
-    if (!message.text && !message.extras.length) continue;
+    if (!message.text && !message.extras.length && !message.activities?.length) continue;
     const node = document.createElement("article");
     const text = cleanMessageText(message.text || "");
     const metadataOnly = !text && message.extras.length;
@@ -139,12 +140,55 @@ function renderCurrent() {
       <div class="role">${message.role === "user" ? "You" : "OpenCode"}</div>
       <div class="bubble">
         <div class="content">${text ? escapeHtml(text) : ""}</div>
-        ${message.extras.length ? `<div class="status-bar">${escapeHtml(message.extras.join(" | "))}</div>` : ""}
+        ${renderActivities(message.activities || [])}
+        ${message.error ? `<div class="status-bar error-text">${escapeHtml(message.error)}</div>` : ""}
       </div>
     `;
     $("messages").appendChild(node);
   }
   $("messages").scrollTop = $("messages").scrollHeight;
+}
+
+function renderActivities(activities) {
+  if (!activities.length) return "";
+  return `<div class="activity-list">${activities.map((activity) => {
+    const detail = activity.detail ? `<pre>${escapeHtml(activity.detail)}</pre>` : "";
+    return `
+      <details class="activity-item ${escapeHtml(activity.status || "")}" ${activity.status === "running" ? "open" : ""}>
+        <summary>
+          <span class="activity-dot"></span>
+          <span>${escapeHtml(activity.label || activity.type)}</span>
+          <small>${escapeHtml(activity.status || "")}</small>
+        </summary>
+        ${detail}
+      </details>
+    `;
+  }).join("")}</div>`;
+}
+
+function renderTasks() {
+  const panel = $("taskPanel");
+  const todos = current?.todos || [];
+  panel.classList.toggle("visible", todos.length > 0);
+  if (!todos.length) {
+    panel.innerHTML = "";
+    return;
+  }
+  const completed = todos.filter((todo) => todo.status === "completed").length;
+  panel.innerHTML = `
+    <details ${completed < todos.length ? "open" : ""}>
+      <summary>Tasks <span>${completed}/${todos.length}</span></summary>
+      <div class="task-list">
+        ${todos.map((todo) => `
+          <div class="task-item ${escapeHtml(todo.status || "pending")}">
+            <span class="task-mark"></span>
+            <span>${escapeHtml(todo.content || "")}</span>
+            <small>${escapeHtml(todo.status || "pending")}</small>
+          </div>
+        `).join("")}
+      </div>
+    </details>
+  `;
 }
 
 function renderBatchControls() {
@@ -777,12 +821,12 @@ function setComposerStatus(text) {
 function messageSignature(session) {
   return (session?.messages || [])
     .slice(-6)
-    .map((message) => `${message.role}:${message.id}:${message.created}:${message.completed || 0}:${message.error || ""}:${(message.text || "").length}`)
+    .map((message) => `${message.role}:${message.id}:${message.created}:${message.completed || 0}:${message.error || ""}:${(message.text || "").length}:${JSON.stringify(message.activities || []).length}`)
     .join("|");
 }
 
 function sessionStateSignature(session) {
-  return `${session?.updated || 0}:${session?.title || ""}:${session?.model || ""}:${session?.tokensInput || 0}:${session?.tokensOutput || 0}:${messageSignature(session)}`;
+  return `${session?.updated || 0}:${session?.title || ""}:${session?.model || ""}:${session?.tokensInput || 0}:${session?.tokensOutput || 0}:${JSON.stringify(session?.todos || []).length}:${messageSignature(session)}`;
 }
 
 function hasNewAssistantMessage(session, startedAt) {

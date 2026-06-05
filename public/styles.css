@@ -364,6 +364,70 @@ button:disabled {
   width: min(100%, 1040px);
 }
 
+.task-panel {
+  display: none;
+  width: min(100%, 1040px);
+  margin: 0 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  padding: 8px 10px;
+}
+
+.task-panel.visible {
+  display: block;
+}
+
+.task-panel summary {
+  cursor: pointer;
+  font-weight: 650;
+  font-size: 12px;
+}
+
+.task-panel summary span {
+  color: var(--muted);
+  margin-left: 5px;
+  font-weight: 400;
+}
+
+.task-list {
+  display: grid;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.task-item {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.task-mark,
+.activity-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.task-item.in_progress .task-mark,
+.activity-item.running .activity-dot {
+  background: var(--accent);
+}
+
+.task-item.completed .task-mark,
+.activity-item.completed .activity-dot {
+  background: #4f8a55;
+}
+
+.task-item.completed > span:nth-child(2) {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
 :root[data-theme="dark"] .permission-panel {
   background: #302a17;
   border-color: #6c5a28;
@@ -512,9 +576,34 @@ button:disabled {
   display: flex;
   flex-direction: column;
   overflow: auto;
+  scrollbar-width: none;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   box-shadow: 0 5px 18px rgba(25, 25, 20, 0.04);
+}
+
+.bubble:hover {
+  scrollbar-width: thin;
+}
+
+.bubble::-webkit-scrollbar,
+.activity-item pre::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.bubble:hover::-webkit-scrollbar,
+.activity-item pre:hover::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.bubble::-webkit-scrollbar-thumb,
+.activity-item pre::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
 }
 
 .content {
@@ -523,6 +612,66 @@ button:disabled {
   line-height: 1.5;
   margin-bottom: 24px;
   min-height: 0;
+}
+
+.content:empty {
+  display: none;
+}
+
+.activity-list {
+  display: grid;
+  gap: 5px;
+  margin-top: auto;
+}
+
+.activity-item {
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+
+.activity-item summary {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  list-style: none;
+}
+
+.activity-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.activity-item summary small {
+  opacity: 0.65;
+}
+
+.activity-item pre {
+  max-height: 180px;
+  overflow: auto;
+  scrollbar-width: none;
+  margin: 7px 0 0 15px;
+  padding: 8px;
+  border-radius: var(--radius-xs);
+  background: var(--panel-2);
+  color: var(--muted);
+  font: 11px/1.45 Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.activity-item pre:hover {
+  scrollbar-width: thin;
+}
+
+.activity-item.error .activity-dot {
+  background: #a33;
+}
+
+.error-text {
+  color: #a33;
 }
 
 .message.user .bubble {
