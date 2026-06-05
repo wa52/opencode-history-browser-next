@@ -18,6 +18,10 @@ opencode plugin --global github:wa52/opencode-history-browser
 
 Restart OpenCode. The browser opens automatically.
 
+On Windows, the plugin also creates `OpenCode Browser.vbs` on the desktop. Use
+that shortcut afterward to start the browser UI without keeping an OpenCode
+command window visible.
+
 If it does not open, run this in OpenCode:
 
 ```text
@@ -39,8 +43,14 @@ To verify an install:
 - Pin, rename, delete, and multi-delete chats
 - Search all sessions
 - Create a Balanced context snapshot
-- Open OpenCode panels from the browser: Models, Sessions, Help, Themes
+- Reply to OpenCode questions, choices, and permission requests
+- Paste or attach images
+- Search and select models
+- Browser commands: `/key`, `/skills`, and `/mcp`
 - Install self-check with `/history-browser-doctor`
+
+Closing the browser also stops the hidden OpenCode host after a short grace
+period. Reloading the page does not stop it.
 
 ## Update
 

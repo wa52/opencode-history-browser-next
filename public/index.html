@@ -44,7 +44,9 @@
 
             <div id="messages" class="messages"></div>
             <div id="permissionPanel" class="permission-panel"></div>
+            <div id="questionPanel" class="question-panel"></div>
             <form id="composer" class="composer">
+              <div id="commandMenu" class="command-menu"></div>
               <div id="attachmentList" class="attachment-list"></div>
               <input id="imageInput" type="file" accept="image/*" multiple hidden />
               <button id="attachBtn" class="icon-button attach-button" type="button" title="Attach image" aria-label="Attach image">+</button>
@@ -99,6 +101,13 @@
         </div>
       </section>
     </main>
+    <dialog id="utilityDialog" class="utility-dialog">
+      <div class="utility-header">
+        <strong id="utilityTitle">OpenCode</strong>
+        <button id="utilityClose" class="icon-button" type="button" aria-label="Close">x</button>
+      </div>
+      <div id="utilityBody" class="utility-body"></div>
+    </dialog>
     <script src="/app.js"></script>
   </body>
 </html>

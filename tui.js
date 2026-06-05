@@ -13,6 +13,7 @@ const id = "opencode-history-browser";
 const root = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(root, "public");
 const execFileAsync = promisify(execFile);
+const browserMode = process.env.OPENCODE_BROWSER_MODE === "1";
 let server;
 let serverUrl;
 let serverToken;
@@ -24,6 +25,7 @@ const serverIdleMs = 2 * 60 * 1000;
 
 async function tui(api) {
   registerShutdownHandlers();
+  ensureBrowserLauncher().catch(() => {});
   const start = async () => {
     serverUrl = await ensureServer(api);
     openUrl(serverUrl);
@@ -178,6 +180,46 @@ async function handleRequest(api, request, response) {
   if (request.method === "GET" && url.pathname === "/api/permissions") {
     const permissions = await listPermissions(api);
     return sendJson(response, { permissions });
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/questions") {
+    const questions = await listQuestions(api);
+    return sendJson(response, { questions });
+  }
+
+  if (request.method === "POST" && url.pathname.startsWith("/api/questions/")) {
+    const suffix = url.pathname.slice("/api/questions/".length);
+    const requestID = decodeURIComponent(suffix.replace(/\/(reply|reject)$/, ""));
+    if (suffix.endsWith("/reject")) {
+      await assertOk(api.client.question.reject({ requestID }));
+      return sendJson(response, { ok: true });
+    }
+    if (!suffix.endsWith("/reply")) return sendJson(response, { error: "Unknown question action" }, 404);
+    const body = await readJson(request);
+    const answers = Array.isArray(body.answers) ? body.answers.map((answer) => Array.isArray(answer) ? answer.map(String) : []) : [];
+    await assertOk(api.client.question.reply({ requestID, answers }));
+    return sendJson(response, { ok: true });
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/skills") {
+    const skills = await assertOk(api.client.app.skills({}));
+    return sendJson(response, {
+      skills: (Array.isArray(skills) ? skills : []).map(({ name, description, location }) => ({ name, description, location })),
+    });
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/mcp") {
+    const status = await assertOk(api.client.mcp.status({}));
+    return sendJson(response, { servers: Object.entries(status || {}).map(([name, value]) => ({ name, ...value })) });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/auth/key") {
+    const body = await readJson(request);
+    const providerID = String(body.providerID || "").trim();
+    const key = String(body.key || "").trim();
+    if (!providerID || !key) return sendJson(response, { error: "Provider and API key are required" }, 400);
+    await assertOk(api.client.auth.set({ providerID, auth: { type: "api", key } }));
+    return sendJson(response, { ok: true, providerID });
   }
 
   if (request.method === "POST" && url.pathname.startsWith("/api/permissions/")) {
@@ -567,6 +609,15 @@ async function listPermissions(api) {
   }
 }
 
+async function listQuestions(api) {
+  try {
+    const result = await assertOk(api.client.question.list({}));
+    return Array.isArray(result) ? result : [];
+  } catch {
+    return [];
+  }
+}
+
 function permissionRow(item) {
   const metadata = item?.metadata && typeof item.metadata === "object" ? item.metadata : {};
   return {
@@ -732,10 +783,15 @@ function markBrowserSeen() {
 function startIdleMonitor() {
   if (serverIdleTimer) clearInterval(serverIdleTimer);
   serverIdleTimer = setInterval(() => {
-    if (!server?.listening || !lastBrowserSeen) return closeServer();
-    if (Date.now() - lastBrowserSeen > serverIdleMs) closeServer();
+    if (!server?.listening || !lastBrowserSeen) return closeServerAndExitBrowserMode();
+    if (Date.now() - lastBrowserSeen > serverIdleMs) closeServerAndExitBrowserMode();
   }, 15000);
   serverIdleTimer.unref?.();
+}
+
+function closeServerAndExitBrowserMode() {
+  closeServer();
+  if (browserMode) process.exit(0);
 }
 
 function closeServer() {
@@ -762,6 +818,24 @@ function registerShutdownHandlers() {
       process.exit(0);
     });
   }
+}
+
+async function ensureBrowserLauncher() {
+  if (process.platform !== "win32") return;
+  const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
+  const installedCommand = join(appData, "npm", "opencode.cmd");
+  const command = existsSync(installedCommand) ? installedCommand : "opencode";
+  const script = [
+    'Set shell = CreateObject("WScript.Shell")',
+    'shell.Environment("Process")("OPENCODE_BROWSER_MODE") = "1"',
+    `shell.Run Chr(34) & "${command.replaceAll('"', '""')}" & Chr(34), 0, False`,
+    "",
+  ].join("\r\n");
+  const candidates = [
+    join(homedir(), "Desktop"),
+    process.env.OneDrive ? join(process.env.OneDrive, "Desktop") : "",
+  ].filter((desktop, index, values) => desktop && existsSync(desktop) && values.indexOf(desktop) === index);
+  await Promise.all(candidates.map((desktop) => writeFile(join(desktop, "OpenCode Browser.vbs"), script, "utf8")));
 }
 
 function openUrl(url) {

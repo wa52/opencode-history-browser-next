@@ -373,6 +373,95 @@ button:disabled {
   display: block;
 }
 
+.question-panel {
+  display: none;
+  width: min(100%, 1040px);
+  margin: 0 0 10px;
+}
+
+.question-panel.visible {
+  display: grid;
+  gap: 8px;
+}
+
+.question-card {
+  border: 1px solid var(--accent);
+  background: var(--panel);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  box-shadow: var(--shadow);
+}
+
+.question-group {
+  border: 0;
+  padding: 0;
+  margin: 0 0 12px;
+}
+
+.question-group legend {
+  font-weight: 650;
+  font-size: 13px;
+}
+
+.question-group p {
+  margin: 3px 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.question-options {
+  display: grid;
+  gap: 6px;
+}
+
+.question-option {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.question-option:hover {
+  background: var(--panel-2);
+}
+
+.question-option input {
+  margin: 3px 0 0;
+  accent-color: var(--accent);
+}
+
+.question-option span,
+.question-option small {
+  display: block;
+}
+
+.question-option small {
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.question-custom {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  padding: 8px 10px;
+  outline: none;
+}
+
+.question-custom:focus {
+  border-color: var(--accent);
+}
+
+.question-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .permission-title {
   font-weight: 650;
   margin-bottom: 4px;
@@ -687,6 +776,7 @@ button:disabled {
 }
 
 .composer {
+  position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 10px;
@@ -698,6 +788,139 @@ button:disabled {
   box-shadow: var(--shadow);
   flex: 0 0 auto;
   width: min(100%, 1040px);
+}
+
+.command-menu {
+  position: absolute;
+  display: none;
+  left: 12px;
+  bottom: calc(100% + 8px);
+  width: min(360px, calc(100% - 24px));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  padding: 6px;
+  box-shadow: var(--shadow);
+  z-index: 8;
+}
+
+.command-menu.visible {
+  display: grid;
+}
+
+.command-option {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  gap: 8px;
+  width: 100%;
+  border-color: transparent;
+  text-align: left;
+  border-radius: var(--radius-sm);
+}
+
+.command-option:hover {
+  background: var(--panel-2);
+}
+
+.command-option code {
+  color: var(--accent);
+}
+
+.utility-dialog {
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(680px, calc(100vh - 32px));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  color: var(--text);
+  padding: 0;
+  box-shadow: var(--shadow);
+}
+
+.utility-dialog::backdrop {
+  background: rgba(20, 21, 18, 0.45);
+}
+
+.utility-header {
+  min-height: 52px;
+  padding: 10px 12px 10px 18px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.utility-body {
+  max-height: calc(100vh - 118px);
+  overflow: auto;
+  padding: 14px;
+}
+
+.utility-form {
+  display: grid;
+  gap: 12px;
+}
+
+.utility-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.utility-item {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 4px;
+}
+
+.utility-item:first-child {
+  padding-top: 2px;
+}
+
+.utility-item:last-child {
+  border-bottom: 0;
+}
+
+.utility-item p {
+  margin: 4px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.utility-item small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.utility-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.utility-row small {
+  grid-column: 1 / -1;
+}
+
+.status-pill {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.status-pill.connected {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.utility-loading,
+.utility-empty {
+  color: var(--muted);
+  padding: 16px 4px;
+  text-align: center;
 }
 
 .composer-status {

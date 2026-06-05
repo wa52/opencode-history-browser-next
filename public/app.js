@@ -15,7 +15,13 @@ let selectedModel = readStoredJson("historyBrowser:model", null);
 let selectedTheme = localStorage.getItem("historyBrowser:theme") || "system";
 let attachments = [];
 let permissions = [];
+let questions = [];
 const selectedIds = new Set();
+const browserCommands = [
+  { command: "/key", label: "Add model API key" },
+  { command: "/skills", label: "View installed skills" },
+  { command: "/mcp", label: "View MCP status" },
+];
 const apiToken = new URLSearchParams(window.location.search).get("token") || "";
 const promptPollMs = 1500;
 const promptMaxWaitMs = 10 * 60 * 1000;
@@ -104,6 +110,7 @@ function renderCurrent() {
   $("promptInput").placeholder = current ? "Message this chat" : "Start a new chat";
   $("sendBtn").disabled = sending;
   renderPermissions();
+  renderQuestions();
 
   if (!current) {
     $("meta").textContent = "No chat selected";
@@ -314,6 +321,94 @@ async function replyPermission(id, reply) {
   }
 }
 
+async function loadQuestions() {
+  const data = await request("/api/questions");
+  questions = Array.isArray(data.questions) ? data.questions : [];
+  renderQuestions();
+}
+
+function renderQuestions() {
+  const panel = $("questionPanel");
+  const visibleQuestions = questions.filter((item) => !current || !item.sessionID || item.sessionID === current.id);
+  panel.classList.toggle("visible", visibleQuestions.length > 0);
+  if (!visibleQuestions.length) {
+    panel.innerHTML = "";
+    return;
+  }
+  panel.innerHTML = visibleQuestions.map((item) => {
+    const groups = (item.questions || []).map((question, questionIndex) => {
+      const type = question.multiple ? "checkbox" : "radio";
+      const name = `question-${item.id}-${questionIndex}`;
+      const options = (question.options || []).map((option) => `
+        <label class="question-option">
+          <input type="${type}" name="${escapeHtml(name)}" value="${escapeHtml(option.label)}" />
+          <span><strong>${escapeHtml(option.label)}</strong>${option.description ? `<small>${escapeHtml(option.description)}</small>` : ""}</span>
+        </label>
+      `).join("");
+      const custom = question.custom === false ? "" : `
+        <input class="question-custom" name="${escapeHtml(name)}-custom" type="text" placeholder="Other answer" />
+      `;
+      return `
+        <fieldset class="question-group" data-question-index="${questionIndex}">
+          <legend>${escapeHtml(question.header || `Question ${questionIndex + 1}`)}</legend>
+          <p>${escapeHtml(question.question || "")}</p>
+          <div class="question-options">${options}${custom}</div>
+        </fieldset>
+      `;
+    }).join("");
+    return `
+      <form class="question-card" data-question-id="${escapeHtml(item.id)}">
+        ${groups}
+        <div class="question-actions">
+          <button class="small-button primary" type="submit">Submit answer</button>
+          <button class="small-button danger" type="button" data-question-reject>Reject</button>
+        </div>
+      </form>
+    `;
+  }).join("");
+  for (const form of panel.querySelectorAll("[data-question-id]")) {
+    form.addEventListener("submit", (event) => submitQuestion(event, form));
+    form.querySelector("[data-question-reject]")?.addEventListener("click", () => rejectQuestion(form.dataset.questionId));
+  }
+}
+
+async function submitQuestion(event, form) {
+  event.preventDefault();
+  const answers = [...form.querySelectorAll("[data-question-index]")].map((group) => {
+    const selected = [...group.querySelectorAll("input:checked")].map((input) => input.value);
+    const custom = group.querySelector(".question-custom")?.value.trim();
+    if (custom) selected.push(custom);
+    return selected;
+  });
+  if (answers.some((answer) => answer.length === 0)) {
+    setComposerStatus("Select or enter an answer for every question.");
+    return;
+  }
+  setComposerStatus("Sending answer...");
+  try {
+    await request(`/api/questions/${encodeURIComponent(form.dataset.questionId)}/reply`, {
+      method: "POST",
+      body: JSON.stringify({ answers }),
+    });
+    await loadQuestions();
+    setComposerStatus("");
+  } catch (error) {
+    setComposerStatus(error.message);
+  }
+}
+
+async function rejectQuestion(id) {
+  if (!id) return;
+  setComposerStatus("Rejecting question...");
+  try {
+    await request(`/api/questions/${encodeURIComponent(id)}/reject`, { method: "POST" });
+    await loadQuestions();
+    setComposerStatus("");
+  } catch (error) {
+    setComposerStatus(error.message);
+  }
+}
+
 function renderModels() {
   const search = $("modelSearch");
   const selected = selectedModel ? modelOptions.find((model) => modelValue(model) === modelValue(selectedModel)) : null;
@@ -417,6 +512,10 @@ async function sendPrompt(event) {
   const text = $("promptInput").value.trim();
   const files = attachments.map(({ filename, mime, url }) => ({ filename, mime, url }));
   if (!text && !files.length) return;
+  if (text.startsWith("/") && !files.length) {
+    await runBrowserCommand(text);
+    return;
+  }
   const optimisticSessionID = current?.id;
   const beforeSignature = messageSignature(current);
   sending = true;
@@ -452,6 +551,123 @@ async function sendPrompt(event) {
     $("sendBtn").disabled = false;
     $("sendBtn").textContent = promptWatcher ? "Stop" : "Send";
     resizePrompt();
+  }
+}
+
+async function runBrowserCommand(value) {
+  const [command] = value.trim().split(/\s+/, 1);
+  $("commandMenu").classList.remove("visible");
+  if (command === "/key") {
+    openKeyDialog();
+  } else if (command === "/skills") {
+    await openSkillsDialog();
+  } else if (command === "/mcp") {
+    await openMcpDialog();
+  } else {
+    setComposerStatus("Available commands: /key, /skills, /mcp");
+    return;
+  }
+  $("promptInput").value = "";
+  resizePrompt();
+  setComposerStatus("");
+}
+
+function renderCommandMenu() {
+  resizePrompt();
+  const input = $("promptInput").value.trim();
+  const menu = $("commandMenu");
+  if (!input.startsWith("/") || input.includes(" ")) {
+    menu.classList.remove("visible");
+    menu.innerHTML = "";
+    return;
+  }
+  const matches = browserCommands.filter((item) => item.command.startsWith(input.toLowerCase()));
+  menu.classList.toggle("visible", matches.length > 0);
+  menu.innerHTML = matches.map((item) => `
+    <button class="command-option" type="button" data-browser-command="${item.command}">
+      <code>${item.command}</code>
+      <span>${item.label}</span>
+    </button>
+  `).join("");
+  for (const option of menu.querySelectorAll("[data-browser-command]")) {
+    option.addEventListener("click", () => {
+      $("promptInput").value = option.dataset.browserCommand;
+      runBrowserCommand(option.dataset.browserCommand);
+    });
+  }
+}
+
+function openUtilityDialog(title, content) {
+  $("utilityTitle").textContent = title;
+  $("utilityBody").innerHTML = content;
+  $("utilityDialog").showModal();
+}
+
+function openKeyDialog() {
+  const providers = [...new Map(modelOptions.map((model) => [model.providerID, model])).values()]
+    .sort((a, b) => a.providerID.localeCompare(b.providerID));
+  openUtilityDialog("Add model API key", `
+    <form id="keyForm" class="utility-form">
+      <label>Provider
+        <select id="keyProvider" class="select-input" required>
+          ${providers.map((provider) => `<option value="${escapeHtml(provider.providerID)}">${escapeHtml(provider.providerID)}</option>`).join("")}
+        </select>
+      </label>
+      <label>API key
+        <input id="keyValue" class="select-input" type="password" autocomplete="off" required />
+      </label>
+      <button class="primary" type="submit">Save key</button>
+    </form>
+  `);
+  $("keyForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const providerID = $("keyProvider").value;
+    const key = $("keyValue").value.trim();
+    try {
+      await request("/api/auth/key", {
+        method: "POST",
+        body: JSON.stringify({ providerID, key }),
+      });
+      $("utilityDialog").close();
+      await loadModels();
+      setComposerStatus(`API key saved for ${providerID}.`);
+    } catch (error) {
+      setComposerStatus(error.message);
+    }
+  });
+}
+
+async function openSkillsDialog() {
+  openUtilityDialog("Skills", '<div class="utility-loading">Loading skills...</div>');
+  try {
+    const data = await request("/api/skills");
+    const skills = Array.isArray(data.skills) ? data.skills : [];
+    $("utilityBody").innerHTML = skills.length ? skills.map((skill) => `
+      <article class="utility-item">
+        <strong>${escapeHtml(skill.name)}</strong>
+        <p>${escapeHtml(skill.description || "No description")}</p>
+        <small>${escapeHtml(skill.location || "")}</small>
+      </article>
+    `).join("") : '<div class="utility-empty">No skills found.</div>';
+  } catch (error) {
+    $("utilityBody").innerHTML = `<div class="utility-empty">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+async function openMcpDialog() {
+  openUtilityDialog("MCP", '<div class="utility-loading">Loading MCP status...</div>');
+  try {
+    const data = await request("/api/mcp");
+    const servers = Array.isArray(data.servers) ? data.servers : [];
+    $("utilityBody").innerHTML = servers.length ? servers.map((server) => `
+      <article class="utility-item utility-row">
+        <strong>${escapeHtml(server.name)}</strong>
+        <span class="status-pill ${escapeHtml(server.status || "")}">${escapeHtml(server.status || "unknown")}</span>
+        ${server.error ? `<small>${escapeHtml(server.error)}</small>` : ""}
+      </article>
+    `).join("") : '<div class="utility-empty">No MCP servers configured.</div>';
+  } catch (error) {
+    $("utilityBody").innerHTML = `<div class="utility-empty">${escapeHtml(error.message)}</div>`;
   }
 }
 
@@ -540,6 +756,7 @@ async function refreshCurrentSession({ force = false, refreshList = false } = {}
     }
     if (refreshList) await loadSessions();
     await loadPermissions();
+    await loadQuestions();
   } finally {
     liveRefreshInFlight = false;
   }
@@ -714,7 +931,7 @@ $("search").addEventListener("input", () => {
   clearTimeout(window.__searchTimer);
   window.__searchTimer = setTimeout(loadSessions, 180);
 });
-$("promptInput").addEventListener("input", resizePrompt);
+$("promptInput").addEventListener("input", renderCommandMenu);
 $("promptInput").addEventListener("paste", handleImagePaste);
 document.addEventListener("paste", handleImagePaste);
 function handleImagePaste(event) {
@@ -740,7 +957,9 @@ document.addEventListener("keydown", (event) => {
 });
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".model-picker")) $("modelMenu").classList.remove("visible");
+  if (!event.target.closest(".composer")) $("commandMenu").classList.remove("visible");
 });
+$("utilityClose").onclick = () => $("utilityDialog").close();
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 window.addEventListener("pagehide", notifyBrowserClose);
 
@@ -748,6 +967,7 @@ applyTheme();
 heartbeat();
 window.setInterval(heartbeat, 10000);
 window.setInterval(() => loadPermissions().catch(() => {}), promptPollMs);
+window.setInterval(() => loadQuestions().catch(() => {}), promptPollMs);
 renderCurrent();
 loadSessions().catch((error) => {
   $("empty").innerHTML = `<div class="new-chat-box"><div class="new-chat-title">Load failed</div><p>${escapeHtml(error.message)}</p></div>`;
@@ -756,3 +976,4 @@ loadModels().catch(() => {
   $("modelSearch").placeholder = "Follow OpenCode";
 });
 loadPermissions().catch(() => {});
+loadQuestions().catch(() => {});
