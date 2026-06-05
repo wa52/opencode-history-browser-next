@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,6 +26,7 @@ const serverIdleMs = 2 * 60 * 1000;
 async function tui(api) {
   registerShutdownHandlers();
   ensureBrowserLauncher().catch(() => {});
+  ensureCommandRedirect().catch(() => {});
   const start = async () => {
     serverUrl = await ensureServer(api);
     openUrl(serverUrl);
@@ -293,11 +294,11 @@ async function handleRequest(api, request, response) {
         noReply: true,
         parts: [{ type: "text", text: snapshot }],
       }));
-      await assertOk(api.client.tui.selectSession({ sessionID: newSessionID }));
+      if (!api.headless) await assertOk(api.client.tui.selectSession({ sessionID: newSessionID }));
       return sendJson(response, { ok: true, sessionID: newSessionID });
     }
     if (action === "open") {
-      await assertOk(api.client.tui.selectSession({ sessionID }));
+      if (!api.headless) await assertOk(api.client.tui.selectSession({ sessionID }));
       return sendJson(response, { ok: true, command: `opencode --session ${sessionID}` });
     }
     if (action === "abort") {
@@ -309,7 +310,7 @@ async function handleRequest(api, request, response) {
       const text = String(body.text || "").trim();
       const files = normalizePromptFiles(body.files);
       if (!text && !files.length) return sendJson(response, { error: "Message is empty" }, 400);
-      await assertOk(api.client.tui.selectSession({ sessionID }));
+      if (!api.headless) await assertOk(api.client.tui.selectSession({ sessionID }));
       const model = normalizeModelObject(body.model);
       const result = await promptSession(api, { sessionID, text, model, files });
       return sendJson(response, { ok: true, sessionID, method: result.method, model: result.model });
@@ -319,7 +320,7 @@ async function handleRequest(api, request, response) {
   if (request.method === "POST" && url.pathname === "/api/open-new") {
     const result = await assertOk(api.client.session.create({ title: "New chat" }));
     const sessionID = result?.id;
-    if (sessionID) await assertOk(api.client.tui.selectSession({ sessionID }));
+    if (sessionID && !api.headless) await assertOk(api.client.tui.selectSession({ sessionID }));
     return sendJson(response, { ok: true, command: "opencode", sessionID });
   }
 
@@ -605,7 +606,7 @@ function compact(text) {
 }
 
 async function promptSession(api, { sessionID, text, model, files = [] }) {
-  if (!model && !files.length && api.client.tui?.appendPrompt && api.client.tui?.submitPrompt) {
+  if (!api.headless && !model && !files.length && api.client.tui?.appendPrompt && api.client.tui?.submitPrompt) {
     await assertOk(api.client.tui.selectSession({ sessionID }));
     if (api.client.tui.clearPrompt) await assertOk(api.client.tui.clearPrompt({}));
     await assertOk(api.client.tui.appendPrompt({ text }));
@@ -902,20 +903,68 @@ function registerShutdownHandlers() {
 
 async function ensureBrowserLauncher() {
   if (process.platform !== "win32") return;
-  const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
-  const installedCommand = join(appData, "npm", "opencode.cmd");
-  const command = existsSync(installedCommand) ? installedCommand : "opencode";
+  const configDir = join(homedir(), ".config", "opencode");
+  await mkdir(configDir, { recursive: true });
+  const launcher = join(configDir, "OpenCode Browser.vbs");
   const script = [
     'Set shell = CreateObject("WScript.Shell")',
     'shell.Environment("Process")("OPENCODE_BROWSER_MODE") = "1"',
-    `shell.Run Chr(34) & "${command.replaceAll('"', '""')}" & Chr(34), 0, False`,
+    `shell.Run Chr(34) & "${process.execPath.replaceAll('"', '""')}" & Chr(34) & " " & Chr(34) & "${join(root, "standalone.js").replaceAll('"', '""')}" & Chr(34), 0, False`,
     "",
   ].join("\r\n");
   const candidates = [
     join(homedir(), "Desktop"),
     process.env.OneDrive ? join(process.env.OneDrive, "Desktop") : "",
   ].filter((desktop, index, values) => desktop && existsSync(desktop) && values.indexOf(desktop) === index);
+  await writeFile(launcher, script, "utf8");
   await Promise.all(candidates.map((desktop) => writeFile(join(desktop, "OpenCode Browser.vbs"), script, "utf8")));
+}
+
+async function ensureCommandRedirect() {
+  if (process.platform !== "win32") return;
+  const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
+  const npmDir = join(appData, "npm");
+  const launcher = join(homedir(), ".config", "opencode", "OpenCode Browser.vbs");
+  const cmd = join(npmDir, "opencode.cmd");
+  const cliCmd = join(npmDir, "opencode-cli.cmd");
+  if (existsSync(cmd)) {
+    const current = await readFile(cmd, "utf8");
+    if (!current.includes("OPENCODE_HISTORY_BROWSER_REDIRECT")) await writeFile(cliCmd, current, "utf8");
+    await writeFile(cmd, [
+      "@ECHO off",
+      "REM OPENCODE_HISTORY_BROWSER_REDIRECT",
+      'IF NOT "%~1"=="" GOTO cli',
+      `START "" /B wscript.exe "${launcher}"`,
+      "EXIT /B 0",
+      ":cli",
+      `CALL "${cliCmd}" %*`,
+      "",
+    ].join("\r\n"), "utf8");
+  }
+  const ps1 = join(npmDir, "opencode.ps1");
+  const cliPs1 = join(npmDir, "opencode-cli.ps1");
+  if (existsSync(ps1)) {
+    const current = await readFile(ps1, "utf8");
+    if (!current.includes("OPENCODE_HISTORY_BROWSER_REDIRECT")) await writeFile(cliPs1, current, "utf8");
+    await writeFile(ps1, [
+      "# OPENCODE_HISTORY_BROWSER_REDIRECT",
+      `if ($args.Count -eq 0 -and -not $MyInvocation.ExpectingInput) { Start-Process -FilePath "wscript.exe" -ArgumentList '"${launcher}"' -WindowStyle Hidden; exit 0 }`,
+      `& "${cliPs1}" @args`,
+      "exit $LASTEXITCODE",
+      "",
+    ].join("\r\n"), "utf8");
+  }
+}
+
+async function restoreCommandRedirect() {
+  if (process.platform !== "win32") return;
+  const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
+  const npmDir = join(appData, "npm");
+  for (const extension of [".cmd", ".ps1"]) {
+    const command = join(npmDir, `opencode${extension}`);
+    const original = join(npmDir, `opencode-cli${extension}`);
+    if (existsSync(original)) await writeFile(command, await readFile(original, "utf8"), "utf8");
+  }
 }
 
 function openUrl(url) {
@@ -934,7 +983,8 @@ function openOpenCodeTerminal({ directory, sessionID }) {
   const args = sessionID ? ["--session", sessionID] : [];
   if (process.platform === "win32") {
     const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
-    const installedCommand = join(appData, "npm", "opencode.cmd");
+    const cliCommand = join(appData, "npm", "opencode-cli.cmd");
+    const installedCommand = existsSync(cliCommand) ? cliCommand : join(appData, "npm", "opencode.cmd");
     const command = existsSync(installedCommand) ? installedCommand : "opencode";
     const commandLine = [quoteCmdArgument(command), ...args.map(quoteCmdArgument)].join(" ");
     spawn("cmd.exe", ["/d", "/k", commandLine], {
@@ -961,6 +1011,7 @@ function quoteCmdArgument(value) {
 }
 
 async function uninstallSelf(api) {
+  await restoreCommandRedirect().catch(() => {});
   const files = tuiConfigCandidates();
   const removed = [];
   for (const file of files) {
@@ -1016,4 +1067,12 @@ function isThisPlugin(plugin) {
   );
 }
 
+async function startBrowserHost(api) {
+  registerShutdownHandlers();
+  const url = await ensureServer(api);
+  openUrl(url);
+  return { url, close: closeServer };
+}
+
+export { startBrowserHost };
 export default { id, tui };

@@ -16,7 +16,12 @@ macOS, Linux, or a shell where `opencode` already works:
 opencode plugin --global github:wa52/opencode-history-browser
 ```
 
-Restart OpenCode. The browser opens automatically.
+Restart OpenCode once after installation. After that, running `opencode` with
+no arguments opens the browser directly without showing the TUI loading page.
+
+Use `opencode-cli` when you explicitly want the original OpenCode command-line
+interface. Commands with arguments, such as `opencode plugin ...` and
+`opencode --help`, continue to use the original OpenCode executable.
 
 On Windows, the plugin also creates `OpenCode Browser.vbs` on the desktop. Use
 that shortcut afterward to start the browser UI without keeping an OpenCode
