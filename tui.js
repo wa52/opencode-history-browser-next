@@ -13,7 +13,6 @@ const id = "opencode-history-browser";
 const root = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(root, "public");
 const execFileAsync = promisify(execFile);
-const browserMode = process.env.OPENCODE_BROWSER_MODE === "1";
 const cliMode = process.env.OPENCODE_HISTORY_CLI === "1";
 let server;
 let serverUrl;
@@ -22,7 +21,6 @@ let serverIdleTimer;
 let lastBrowserSeen = 0;
 let shutdownHandlersRegistered = false;
 const serverSockets = new Set();
-const serverIdleMs = 2 * 60 * 1000;
 
 async function tui(api) {
   if (!cliMode) {
@@ -160,6 +158,9 @@ async function listenOnAvailablePort(httpServer, firstPort) {
 
 async function handleRequest(api, request, response) {
   const url = new URL(request.url || "/", "http://127.0.0.1");
+  if (request.method === "GET" && url.pathname === "/api/health") {
+    return sendJson(response, { ok: true, url: serverUrl });
+  }
   if (url.pathname.startsWith("/api/") && !isAuthorized(request, url)) {
     return sendJson(response, { error: "Unauthorized history browser request" }, 401);
   }
@@ -628,8 +629,16 @@ async function promptSession(api, { sessionID, text, model, files = [] }) {
       ...files,
     ],
   };
-  const selectedModel = model || await promptModel(api, sessionID);
+  const session = await getRawSession(api, sessionID);
+  const listedSession = (!session?.model || !session?.agent)
+    ? await getSession(api, sessionID)
+    : undefined;
+  const selectedModel =
+    await resolvePromptModel(api, model || session?.model || listedSession?.model) ||
+    await defaultPromptModel(api);
   if (selectedModel) payload.model = selectedModel;
+  const agent = session?.agent || listedSession?.agent;
+  if (agent) payload.agent = agent;
   const method = api.client.session.promptAsync || api.client.session.prompt;
   await assertOk(method.call(api.client.session, payload));
   return { method: "session", model: selectedModel };
@@ -653,10 +662,19 @@ function normalizePromptFiles(files) {
 async function listModels(api) {
   const providers = [];
   let defaults = {};
+  if (api.opencodeUrl) {
+    try {
+      const result = await fetchOpenCode(api, "/config/providers");
+      if (Array.isArray(result?.providers)) providers.push(...result.providers);
+      if (result?.default && typeof result.default === "object") defaults = result.default;
+    } catch {}
+  }
   try {
-    const result = await assertOk(api.client.config.providers({}));
-    if (Array.isArray(result?.providers)) providers.push(...result.providers);
-    if (result?.default && typeof result.default === "object") defaults = result.default;
+    if (!providers.length) {
+      const result = await assertOk(api.client.config.providers({}));
+      if (Array.isArray(result?.providers)) providers.push(...result.providers);
+      if (result?.default && typeof result.default === "object") defaults = result.default;
+    }
   } catch {
     try {
       const result = await assertOk(api.client.provider.list({}));
@@ -729,24 +747,60 @@ function permissionSummary(permission, patterns, metadata) {
   return details.length ? details.join(" | ") : String(permission || "Permission requested");
 }
 
-async function promptModel(api, sessionID) {
-  const session = await getRawSession(api, sessionID);
-  const normalized = normalizeModelObject(session?.model);
-  if (normalized) return normalized;
-  const fallback = normalizeModelObject(session?.next?.model || session?.nextModel || session?.modelID || session?.modelId);
-  if (fallback) return fallback;
-  const listed = await getSession(api, sessionID);
-  const listedModel = normalizeModelObject(listed?.model);
-  if (listedModel) return listedModel;
-  return undefined;
+async function resolvePromptModel(api, model) {
+  const normalized = normalizeModelObject(model);
+  if (!normalized) return undefined;
+
+  const models = await listModels(api);
+  const exact = models.find((item) =>
+    item.providerID === normalized.providerID && item.modelID === normalized.modelID
+  );
+  if (exact) return { providerID: exact.providerID, modelID: exact.modelID };
+
+  const shorthand = [
+    normalized.modelID,
+    normalized.providerID,
+    normalizeModel(model),
+  ].filter(Boolean);
+  const match = models.find((item) =>
+    shorthand.includes(item.modelID) ||
+    shorthand.includes(`${item.providerID}/${item.modelID}`)
+  );
+  return match
+    ? { providerID: match.providerID, modelID: match.modelID }
+    : normalized;
+}
+
+async function defaultPromptModel(api) {
+  const models = await listModels(api);
+  const selected =
+    models.find((item) => item.default && item.providerID === "opencode") ||
+    models.find((item) => item.default) ||
+    models[0];
+  return selected
+    ? { providerID: selected.providerID, modelID: selected.modelID }
+    : undefined;
 }
 
 async function getRawSession(api, sessionID) {
+  if (api.opencodeUrl) {
+    try {
+      return await fetchOpenCode(api, `/session/${encodeURIComponent(sessionID)}`);
+    } catch {}
+  }
   try {
     return await assertOk(api.client.session.get({ sessionID }));
   } catch {
     return undefined;
   }
+}
+
+async function fetchOpenCode(api, pathname) {
+  const response = await fetch(new URL(pathname, api.opencodeUrl), {
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!response.ok) throw new Error(`OpenCode API returned ${response.status}`);
+  return response.json();
 }
 
 function normalizeModelObject(model) {
@@ -871,15 +925,9 @@ function markBrowserSeen() {
 function startIdleMonitor() {
   if (serverIdleTimer) clearInterval(serverIdleTimer);
   serverIdleTimer = setInterval(() => {
-    if (!server?.listening || !lastBrowserSeen) return closeServerAndExitBrowserMode();
-    if (Date.now() - lastBrowserSeen > serverIdleMs) closeServerAndExitBrowserMode();
+    if (!server?.listening) closeServer();
   }, 15000);
   serverIdleTimer.unref?.();
-}
-
-function closeServerAndExitBrowserMode() {
-  closeServer();
-  if (browserMode) process.exit(0);
 }
 
 function closeServer() {
