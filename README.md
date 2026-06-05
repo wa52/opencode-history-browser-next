@@ -37,6 +37,7 @@ To verify an install:
 ## What You Get
 
 - Browser-style chat UI for OpenCode history
+- Open an OpenCode command-line window from the browser
 - Continue chats from the browser input
 - Start a new chat
 - Stop an active reply with Stop or Esc
@@ -47,7 +48,7 @@ To verify an install:
 - See reasoning stages, tool calls, tool results, and task progress
 - Paste or attach images
 - Search and select models
-- Browser commands: `/key`, `/skills`, and `/mcp`
+- Browser commands: `/skills` and `/mcp`
 - Install self-check with `/history-browser-doctor`
 
 Closing the browser also stops the hidden OpenCode host after a short grace

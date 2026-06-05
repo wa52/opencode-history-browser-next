@@ -18,7 +18,6 @@ let permissions = [];
 let questions = [];
 const selectedIds = new Set();
 const browserCommands = [
-  { command: "/key", label: "Add model API key" },
   { command: "/skills", label: "View installed skills" },
   { command: "/mcp", label: "View MCP status" },
 ];
@@ -248,6 +247,19 @@ async function openCurrent() {
   if (!data.ok) {
     await navigator.clipboard.writeText(data.command);
     alert(`Copied command: ${data.command}`);
+  }
+}
+
+async function openCli() {
+  setComposerStatus("Opening OpenCode terminal...");
+  try {
+    await request("/api/open-terminal", {
+      method: "POST",
+      body: JSON.stringify({ sessionID: current?.id || "" }),
+    });
+    setComposerStatus("");
+  } catch (error) {
+    setComposerStatus(error.message);
   }
 }
 
@@ -601,14 +613,12 @@ async function sendPrompt(event) {
 async function runBrowserCommand(value) {
   const [command] = value.trim().split(/\s+/, 1);
   $("commandMenu").classList.remove("visible");
-  if (command === "/key") {
-    openKeyDialog();
-  } else if (command === "/skills") {
+  if (command === "/skills") {
     await openSkillsDialog();
   } else if (command === "/mcp") {
     await openMcpDialog();
   } else {
-    setComposerStatus("Available commands: /key, /skills, /mcp");
+    setComposerStatus("Available commands: /skills, /mcp");
     return;
   }
   $("promptInput").value = "";
@@ -645,40 +655,6 @@ function openUtilityDialog(title, content) {
   $("utilityTitle").textContent = title;
   $("utilityBody").innerHTML = content;
   $("utilityDialog").showModal();
-}
-
-function openKeyDialog() {
-  const providers = [...new Map(modelOptions.map((model) => [model.providerID, model])).values()]
-    .sort((a, b) => a.providerID.localeCompare(b.providerID));
-  openUtilityDialog("Add model API key", `
-    <form id="keyForm" class="utility-form">
-      <label>Provider
-        <select id="keyProvider" class="select-input" required>
-          ${providers.map((provider) => `<option value="${escapeHtml(provider.providerID)}">${escapeHtml(provider.providerID)}</option>`).join("")}
-        </select>
-      </label>
-      <label>API key
-        <input id="keyValue" class="select-input" type="password" autocomplete="off" required />
-      </label>
-      <button class="primary" type="submit">Save key</button>
-    </form>
-  `);
-  $("keyForm").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const providerID = $("keyProvider").value;
-    const key = $("keyValue").value.trim();
-    try {
-      await request("/api/auth/key", {
-        method: "POST",
-        body: JSON.stringify({ providerID, key }),
-      });
-      $("utilityDialog").close();
-      await loadModels();
-      setComposerStatus(`API key saved for ${providerID}.`);
-    } catch (error) {
-      setComposerStatus(error.message);
-    }
-  });
 }
 
 async function openSkillsDialog() {
@@ -946,6 +922,7 @@ function notifyBrowserClose() {
 $("refresh").onclick = loadSessions;
 $("openNewBtn").onclick = openNew;
 $("newChatBtn").onclick = openNew;
+$("openCli").onclick = openCli;
 $("sideContinue").onclick = openCurrent;
 $("sideSnapshot").onclick = createSnapshot;
 $("sidePin").onclick = togglePin;

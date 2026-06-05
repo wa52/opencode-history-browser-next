@@ -213,13 +213,17 @@ async function handleRequest(api, request, response) {
     return sendJson(response, { servers: Object.entries(status || {}).map(([name, value]) => ({ name, ...value })) });
   }
 
-  if (request.method === "POST" && url.pathname === "/api/auth/key") {
+  if (request.method === "POST" && url.pathname === "/api/open-terminal") {
     const body = await readJson(request);
-    const providerID = String(body.providerID || "").trim();
-    const key = String(body.key || "").trim();
-    if (!providerID || !key) return sendJson(response, { error: "Provider and API key are required" }, 400);
-    await assertOk(api.client.auth.set({ providerID, auth: { type: "api", key } }));
-    return sendJson(response, { ok: true, providerID });
+    const sessionID = String(body.sessionID || "").trim();
+    let directory = process.cwd();
+    if (sessionID) {
+      const result = await api.client.session.get({ sessionID });
+      if (result.error || !result.data) return sendJson(response, { error: "Session not found" }, 404);
+      directory = result.data.directory || directory;
+    }
+    openOpenCodeTerminal({ directory, sessionID });
+    return sendJson(response, { ok: true, sessionID, directory });
   }
 
   if (request.method === "POST" && url.pathname.startsWith("/api/permissions/")) {
@@ -924,6 +928,36 @@ function openUrl(url) {
     return;
   }
   spawn("xdg-open", [url], { detached: true, stdio: "ignore" }).unref();
+}
+
+function openOpenCodeTerminal({ directory, sessionID }) {
+  const args = sessionID ? ["--session", sessionID] : [];
+  if (process.platform === "win32") {
+    const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
+    const installedCommand = join(appData, "npm", "opencode.cmd");
+    const command = existsSync(installedCommand) ? installedCommand : "opencode";
+    const commandLine = [quoteCmdArgument(command), ...args.map(quoteCmdArgument)].join(" ");
+    spawn("cmd.exe", ["/d", "/k", commandLine], {
+      cwd: existsSync(directory) ? directory : homedir(),
+      detached: true,
+      stdio: "ignore",
+      windowsHide: false,
+    }).unref();
+    return;
+  }
+  const terminal = process.platform === "darwin" ? "open" : "x-terminal-emulator";
+  const terminalArgs = process.platform === "darwin"
+    ? ["-a", "Terminal", directory]
+    : ["-e", "opencode", ...args];
+  spawn(terminal, terminalArgs, {
+    cwd: existsSync(directory) ? directory : homedir(),
+    detached: true,
+    stdio: "ignore",
+  }).unref();
+}
+
+function quoteCmdArgument(value) {
+  return `"${String(value).replaceAll('"', '""')}"`;
 }
 
 async function uninstallSelf(api) {
