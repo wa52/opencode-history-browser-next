@@ -56,8 +56,9 @@ To verify an install:
 - See reasoning stages, tool calls, tool results, and task progress
 - Paste or attach images
 - Search and select models
-- Open detected local files with the system default app
-- Open folders, reveal files in Explorer, and copy local paths
+- File resource cards for local paths returned by messages and tools
+- Open any detected file with the system default app
+- Open folders, reveal files in Explorer, and copy paths
 - Browser commands: `/skills` and `/mcp`
 - Install self-check with `/history-browser-doctor`
 

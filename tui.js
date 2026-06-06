@@ -248,9 +248,9 @@ async function handleRequest(api, request, response) {
     const info = await localPathInfo(target, true);
     if (!info.exists) return sendJson(response, { error: "The local path no longer exists.", path: target }, 404);
     if (action === "open") await openLocalPath(target, info.type);
-    else if (action === "reveal") {
-      if (info.type !== "file") return sendJson(response, { error: "Only files can be revealed." }, 400);
-      await revealLocalFile(target);
+    else if (action === "locate") {
+      if (info.type === "file") await revealLocalFile(target);
+      else await openLocalPath(target, info.type);
     } else if (action !== "info") {
       return sendJson(response, { error: "Unknown local path action." }, 400);
     }
@@ -479,7 +479,7 @@ async function getSession(api, sessionID) {
       error: aborted ? "" : (error || ""),
       aborted,
       text,
-      localPaths: await detectLocalPaths(partText),
+      resources: detectLocalPaths(partText),
       extras,
       activities,
     };
@@ -500,11 +500,16 @@ function activityRow(part) {
     const state = part.state || {};
     const input = formatActivityValue(state.input);
     const output = state.status === "error" ? state.error : state.output;
+    const outputText = output ? clipActivity(output) : "";
+    const resources = state.status === "error" || /\b(?:access denied|not found|outside allowed)\b/i.test(outputText)
+      ? []
+      : detectLocalPaths(outputText);
     return {
       type: part.type,
       label: state.title || part.tool || "Tool",
       status: state.status || "pending",
-      detail: [input && `Input\n${input}`, output && `Output\n${clipActivity(output)}`].filter(Boolean).join("\n\n"),
+      detail: [input && `Input\n${input}`, outputText && `Output\n${outputText}`].filter(Boolean).join("\n\n"),
+      resources,
     };
   }
   if (part.type === "subtask") {
@@ -526,10 +531,23 @@ function activityRow(part) {
     };
   }
   if (part.type === "patch") {
-    return { type: part.type, label: `Changed ${part.files?.length || 0} file(s)`, status: "completed", detail: (part.files || []).join("\n") };
+    return {
+      type: part.type,
+      label: `Changed ${part.files?.length || 0} file(s)`,
+      status: "completed",
+      detail: "",
+      resources: detectLocalPaths((part.files || []).join("\n")),
+    };
   }
   if (part.type === "file") {
-    return { type: part.type, label: part.filename || part.source?.path || "File", status: "completed", detail: part.mime || "" };
+    const path = part.source?.path || part.path || "";
+    return {
+      type: part.type,
+      label: part.filename || path || "File",
+      status: "completed",
+      detail: part.mime || "",
+      resources: detectLocalPaths(path),
+    };
   }
   if (part.type === "retry") {
     return { type: part.type, label: `Retry ${part.attempt || 1}`, status: "error", detail: messageError(part.error) };
@@ -567,9 +585,14 @@ function detectLocalPaths(text) {
   const seen = new Set();
   for (const line of String(text || "").split(/\r?\n/)) {
     const starts = [...line.matchAll(/[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/]/g)];
-    for (const match of starts) {
-      const raw = line.slice(match.index).split(/[<>"`|]/, 1)[0];
-      const candidate = raw.replace(/^[\s([{\u3008\u300a]+|[\s*_~,.;:!?\u3002\uff0c\uff1b\uff1a\uff01\uff1f)\]}\u3009\u300b]+$/g, "");
+    for (let index = 0; index < starts.length; index += 1) {
+      const match = starts[index];
+      const end = starts[index + 1]?.index ?? line.length;
+      const raw = line.slice(match.index, end).split(/[<>"`|]/, 1)[0];
+      const candidate = raw
+        .split(/\s+(?:not in|is not|does not|was not|outside|from|to)\s+/i, 1)[0]
+        .replace(/\s{2,}(?=\d|[-\d]{4,})[\s\S]*$/, "")
+        .replace(/^[\s([{\u3008\u300a]+|[\s*_~,.;:!?\u3002\uff0c\uff1b\uff1a\uff01\uff1f)\]}\u3009\u300b]+$/g, "");
       const normalized = normalizeLocalPath(candidate);
       if (normalized && !seen.has(normalized.toLowerCase())) {
         seen.add(normalized.toLowerCase());

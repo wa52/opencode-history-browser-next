@@ -1025,38 +1025,104 @@ button:disabled {
   padding: 14px;
 }
 
-.local-path {
-  display: inline;
-  border: 0;
-  border-bottom: 1px dashed color-mix(in srgb, var(--accent) 70%, transparent);
-  border-radius: 0;
-  padding: 0;
-  background: transparent;
-  color: var(--accent);
-  font: inherit;
-  text-align: left;
-}
-
-.local-path:hover {
-  border-bottom-style: solid;
-}
-
-.local-path-dialog {
+.resource-list {
   display: grid;
-  gap: 14px;
-}
-
-.local-path-dialog code {
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  background: var(--panel-2);
-  overflow-wrap: anywhere;
-}
-
-.local-path-actions {
-  display: flex;
   gap: 8px;
+  margin: 4px 0 12px;
+}
+
+.resource-list.compact {
+  margin: 8px 0 2px 15px;
+}
+
+.resource-card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  white-space: normal;
+}
+
+.resource-badge {
+  width: 42px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--accent);
+  font: 650 10px/1 "Segoe UI", Arial, sans-serif;
+  overflow: hidden;
+}
+
+.resource-info {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.resource-info strong,
+.resource-info small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-info strong {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.resource-info small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.resource-actions {
+  display: flex;
+  gap: 5px;
   flex-wrap: wrap;
+}
+
+.resource-actions button {
+  min-height: 30px;
+  padding: 5px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+
+.resource-list.compact .resource-card {
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  padding: 7px 8px;
+}
+
+.resource-list.compact .resource-badge {
+  width: 34px;
+  height: 32px;
+  font-size: 9px;
+}
+
+.resource-list.compact .resource-actions button {
+  min-height: 27px;
+  padding: 4px 7px;
+  font-size: 10px;
+}
+
+@media (max-width: 620px) {
+  .resource-card,
+  .resource-list.compact .resource-card {
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+
+  .resource-actions {
+    grid-column: 1 / -1;
+    padding-left: 46px;
+  }
 }
 
 .utility-form {

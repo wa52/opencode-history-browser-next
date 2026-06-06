@@ -139,14 +139,13 @@ function renderCurrent() {
     node.innerHTML = `
       <div class="role">${message.role === "user" ? "You" : "OpenCode"}</div>
       <div class="bubble">
-        <div class="content">${text ? renderMessageText(text, message.localPaths || []) : ""}</div>
+        <div class="content">${text ? renderMessageText(text, message.resources || []) : ""}</div>
+        ${renderResourceCards(message.resources || [])}
         ${renderActivities(message.activities || [])}
         ${message.error ? `<div class="status-bar error-text">${escapeHtml(message.error)}</div>` : ""}
       </div>
     `;
-    for (const pathButton of node.querySelectorAll("[data-local-path]")) {
-      pathButton.addEventListener("click", () => openLocalPathMenu(pathButton.dataset.localPath));
-    }
+    bindResourceActions(node);
     $("messages").appendChild(node);
   }
   $("messages").scrollTop = $("messages").scrollHeight;
@@ -155,15 +154,18 @@ function renderCurrent() {
 function renderActivities(activities) {
   if (!activities.length) return "";
   return `<div class="activity-list">${activities.map((activity) => {
-    const detail = activity.detail ? `<pre>${escapeHtml(activity.detail)}</pre>` : "";
+    const cleanedDetail = removeResourcePaths(activity.detail || "", activity.resources || []);
+    const detail = cleanedDetail ? `<pre>${escapeHtml(cleanedDetail)}</pre>` : "";
+    const expanded = activity.status === "running" || activity.resources?.length;
     return `
-      <details class="activity-item ${escapeHtml(activity.status || "")}" ${activity.status === "running" ? "open" : ""}>
+      <details class="activity-item ${escapeHtml(activity.status || "")}" ${expanded ? "open" : ""}>
         <summary>
           <span class="activity-dot"></span>
           <span>${escapeHtml(activity.label || activity.type)}</span>
           <small>${escapeHtml(activity.status || "")}</small>
         </summary>
         ${detail}
+        ${renderResourceCards(activity.resources || [], true)}
       </details>
     `;
   }).join("")}</div>`;
@@ -907,76 +909,92 @@ function cleanMessageText(value) {
     .trim();
 }
 
-function renderMessageText(text, localPaths) {
+function renderMessageText(text, resources) {
   const paths = [...new Map(
-    localPaths
+    resources
       .filter((item) => item?.path)
       .map((item) => [String(item.path).toLowerCase(), item])
   ).values()].sort((a, b) => b.path.length - a.path.length);
-  if (!paths.length) return escapeHtml(text);
-
-  const lower = text.toLowerCase();
-  const matches = [];
-  for (const item of paths) {
-    const needle = item.path.toLowerCase();
-    let index = lower.indexOf(needle);
-    while (index >= 0) {
-      matches.push({ index, end: index + item.path.length, item });
-      index = lower.indexOf(needle, index + needle.length);
-    }
-  }
-  matches.sort((a, b) => a.index - b.index || b.end - a.end);
-
-  let cursor = 0;
-  let output = "";
-  for (const match of matches) {
-    if (match.index < cursor) continue;
-    output += escapeHtml(text.slice(cursor, match.index));
-    const label = text.slice(match.index, match.end);
-    output += `<button class="local-path" type="button" data-local-path="${escapeHtml(match.item.path)}" title="Local path">${escapeHtml(label)}</button>`;
-    cursor = match.end;
-  }
-  return output + escapeHtml(text.slice(cursor));
+  return escapeHtml(removeResourcePaths(text, paths));
 }
 
-async function openLocalPathMenu(path) {
-  openUtilityDialog("Local path", '<div class="utility-loading">Checking path...</div>');
-  try {
-    const data = await request("/api/local-path", {
-      method: "POST",
-      body: JSON.stringify({ path, action: "info" }),
-    });
-    const fileActions = data.type === "file"
-      ? '<button type="button" data-path-action="reveal">Show in folder</button>'
-      : "";
-    $("utilityBody").innerHTML = `
-      <div class="local-path-dialog">
-        <code>${escapeHtml(data.path)}</code>
-        <div class="local-path-actions">
-          <button class="primary" type="button" data-path-action="open">${data.type === "directory" ? "Open folder" : "Open"}</button>
-          ${fileActions}
-          <button type="button" data-path-action="copy">Copy path</button>
+function removeResourcePaths(text, resources) {
+  let output = String(text || "");
+  for (const resource of [...resources].sort((a, b) => b.path.length - a.path.length)) {
+    output = output.split(resource.path).join("");
+  }
+  return output
+    .replace(/^[ \t]*(?:[-*|]+\s*)?$/gm, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function renderResourceCards(resources, compact = false) {
+  const unique = [...new Map(
+    resources.filter((item) => item?.path).map((item) => [item.path.toLowerCase(), item])
+  ).values()];
+  if (!unique.length) return "";
+  return `<div class="resource-list${compact ? " compact" : ""}">${unique.map((resource) => {
+    const name = resourceName(resource.path);
+    const extension = resourceExtension(name);
+    return `
+      <article class="resource-card">
+        <div class="resource-badge">${escapeHtml(extension || "DIR")}</div>
+        <div class="resource-info">
+          <strong title="${escapeHtml(resource.path)}">${escapeHtml(name)}</strong>
+          <small>${escapeHtml(resourceParent(resource.path))}</small>
         </div>
-      </div>
+        <div class="resource-actions">
+          <button class="primary" type="button" data-resource-action="open" data-resource-path="${escapeHtml(resource.path)}">Open</button>
+          <button type="button" data-resource-action="locate" data-resource-path="${escapeHtml(resource.path)}">Folder</button>
+          <button class="resource-copy" type="button" data-resource-action="copy" data-resource-path="${escapeHtml(resource.path)}" title="Copy path">Copy</button>
+        </div>
+      </article>
     `;
-    for (const button of $("utilityBody").querySelectorAll("[data-path-action]")) {
-      button.addEventListener("click", async () => {
-        const action = button.dataset.pathAction;
+  }).join("")}</div>`;
+}
+
+function bindResourceActions(root) {
+  for (const button of root.querySelectorAll("[data-resource-action]")) {
+    button.addEventListener("click", async () => {
+      const action = button.dataset.resourceAction;
+      const path = button.dataset.resourcePath;
+      try {
         if (action === "copy") {
-          await copyText(data.path);
+          await copyText(path);
+          const original = button.textContent;
           button.textContent = "Copied";
+          window.setTimeout(() => { button.textContent = original; }, 1200);
           return;
         }
+        button.disabled = true;
         await request("/api/local-path", {
           method: "POST",
-          body: JSON.stringify({ path: data.path, action }),
+          body: JSON.stringify({ path, action }),
         });
-        $("utilityDialog").close();
-      });
-    }
-  } catch (error) {
-    $("utilityBody").innerHTML = `<div class="utility-empty">${escapeHtml(error.message)}</div>`;
+      } catch (error) {
+        setComposerStatus(error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
   }
+}
+
+function resourceName(path) {
+  return String(path).split(/[\\/]/).filter(Boolean).pop() || path;
+}
+
+function resourceParent(path) {
+  const value = String(path);
+  const index = Math.max(value.lastIndexOf("\\"), value.lastIndexOf("/"));
+  return index > 0 ? value.slice(0, index) : value;
+}
+
+function resourceExtension(name) {
+  const match = /\.([^.]{1,8})$/.exec(name);
+  return match ? match[1].toUpperCase() : "";
 }
 
 async function copyText(value) {
