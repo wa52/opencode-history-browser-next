@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { extname, isAbsolute, join, normalize } from "node:path";
+import { existsSync, statSync } from "node:fs";
+import { extname, isAbsolute, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import { execFile, spawn } from "node:child_process";
@@ -458,6 +458,7 @@ async function getSession(api, sessionID) {
   } catch {}
   const pinned = getPinned(api);
   const output = await sessionRow(api, sessionResult.data, pinned);
+  const workspace = sessionResult.data.directory || process.cwd();
   output.todos = todos;
   output.messages = await Promise.all((Array.isArray(messagesResult) ? messagesResult : []).map(async (item) => {
     const partText = (item.parts || [])
@@ -468,7 +469,15 @@ async function getSession(api, sessionID) {
     const error = messageError(item.info?.error);
     const aborted = /(?:MessageAbortedError|AbortError|\bAborted\b)/i.test(error);
     const text = partText || (aborted ? "" : error);
-    const activities = (item.parts || []).filter((part) => part.type && part.type !== "text").map(activityRow);
+    const activities = (item.parts || [])
+      .filter((part) => part.type && part.type !== "text")
+      .map((part) => {
+        const activity = activityRow(part, workspace);
+        return {
+          ...activity,
+          paths: activity.paths || resolveLocalPaths(activity.detail, workspace),
+        };
+      });
     const extras = activities.map((activity) => activity.label).slice(0, 8);
     if (error && partText && !aborted) extras.push(error);
     return {
@@ -479,7 +488,7 @@ async function getSession(api, sessionID) {
       error: aborted ? "" : (error || ""),
       aborted,
       text,
-      resources: detectLocalPaths(partText),
+      paths: resolveLocalPaths(partText, workspace),
       extras,
       activities,
     };
@@ -487,7 +496,7 @@ async function getSession(api, sessionID) {
   return output;
 }
 
-function activityRow(part) {
+function activityRow(part, workspace) {
   if (part.type === "reasoning") {
     return {
       type: part.type,
@@ -501,15 +510,15 @@ function activityRow(part) {
     const input = formatActivityValue(state.input);
     const output = state.status === "error" ? state.error : state.output;
     const outputText = output ? clipActivity(output) : "";
-    const resources = state.status === "error" || /\b(?:access denied|not found|outside allowed)\b/i.test(outputText)
+    const paths = state.status === "error" || /\b(?:access denied|not found|outside allowed)\b/i.test(outputText)
       ? []
-      : detectLocalPaths(outputText);
+      : resolveLocalPaths(outputText, workspace);
     return {
       type: part.type,
       label: state.title || part.tool || "Tool",
       status: state.status || "pending",
       detail: [input && `Input\n${input}`, outputText && `Output\n${outputText}`].filter(Boolean).join("\n\n"),
-      resources,
+      paths,
     };
   }
   if (part.type === "subtask") {
@@ -536,7 +545,7 @@ function activityRow(part) {
       label: `Changed ${part.files?.length || 0} file(s)`,
       status: "completed",
       detail: "",
-      resources: detectLocalPaths((part.files || []).join("\n")),
+      paths: resolveLocalPaths((part.files || []).join("\n"), workspace),
     };
   }
   if (part.type === "file") {
@@ -546,7 +555,7 @@ function activityRow(part) {
       label: part.filename || path || "File",
       status: "completed",
       detail: part.mime || "",
-      resources: detectLocalPaths(path),
+      paths: resolveLocalPaths(path, workspace),
     };
   }
   if (part.type === "retry") {
@@ -580,28 +589,74 @@ function messageError(error) {
   return message ? `${name}: ${message}` : name;
 }
 
-function detectLocalPaths(text) {
+function resolveLocalPaths(text, workspace) {
+  const value = String(text || "");
   const candidates = [];
-  const seen = new Set();
-  for (const line of String(text || "").split(/\r?\n/)) {
-    const starts = [...line.matchAll(/[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/]/g)];
-    for (let index = 0; index < starts.length; index += 1) {
-      const match = starts[index];
-      const end = starts[index + 1]?.index ?? line.length;
-      const raw = line.slice(match.index, end).split(/[<>"`|]/, 1)[0];
-      const candidate = raw
-        .split(/\s+(?:not in|is not|does not|was not|outside|from|to)\s+/i, 1)[0]
-        .replace(/\s{2,}(?=\d|[-\d]{4,})[\s\S]*$/, "")
-        .replace(/^[\s([{\u3008\u300a]+|[\s*_~,.;:!?\u3002\uff0c\uff1b\uff1a\uff01\uff1f)\]}\u3009\u300b]+$/g, "");
-      const normalized = normalizeLocalPath(candidate);
-      if (normalized && !seen.has(normalized.toLowerCase())) {
-        seen.add(normalized.toLowerCase());
-        candidates.push({ path: normalized, type: "unknown" });
-      }
-    }
-    if (candidates.length >= 16) break;
+  const seenLabels = new Set();
+  const addCandidate = (label) => {
+    const cleaned = cleanPathLabel(label);
+    if (!cleaned || seenLabels.has(cleaned.toLowerCase())) return;
+    seenLabels.add(cleaned.toLowerCase());
+    candidates.push(cleaned);
+  };
+
+  for (const match of value.matchAll(/`([^`\r\n]+)`|["']([^"'\r\n]+)["']/g)) {
+    addCandidate(match[1] || match[2]);
   }
-  return candidates;
+  for (const line of value.split(/\r?\n/)) {
+    for (const match of line.matchAll(/[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/]/g)) {
+      addCandidate(longestExistingPath(line.slice(match.index), workspace));
+    }
+  }
+  for (const match of value.matchAll(/(?:^|[\s([{"'`|])((?:\.{1,2}[\\/])?(?:[^\s<>"'`|:]+[\\/])+[^\s<>"'`|:]+|(?:\.{1,2}[\\/])?[^\s<>"'`|:]+\.[A-Za-z0-9_-]{1,16})(?=$|[\s)\]},;:'"`|])/gmu)) {
+    addCandidate(match[1]);
+  }
+
+  const output = [];
+  const seenPaths = new Set();
+  for (const label of candidates) {
+    const target = isAbsolute(label) ? normalize(label) : resolve(workspace, label);
+    let details;
+    try {
+      if (!existsSync(target)) continue;
+      details = statSync(target);
+    } catch {
+      continue;
+    }
+    const key = `${label.toLowerCase()}\0${target.toLowerCase()}`;
+    if (seenPaths.has(key)) continue;
+    seenPaths.add(key);
+    output.push({
+      label,
+      path: target,
+      type: details.isDirectory() ? "directory" : "file",
+    });
+    if (output.length >= 40) break;
+  }
+  return output;
+}
+
+function longestExistingPath(raw, workspace) {
+  let candidate = cleanPathLabel(
+    String(raw || "")
+      .split(/[<>"`|]/, 1)[0]
+      .split(/\s+(?:not in|is not|does not|was not|outside|from|to)\s+/i, 1)[0]
+  );
+  for (let attempt = 0; candidate && attempt < 20; attempt += 1) {
+    const target = isAbsolute(candidate) ? normalize(candidate) : resolve(workspace, candidate);
+    if (existsSync(target)) return candidate;
+    const cut = Math.max(candidate.lastIndexOf(" "), candidate.lastIndexOf("\t"));
+    if (cut < 0) break;
+    candidate = cleanPathLabel(candidate.slice(0, cut));
+  }
+  return "";
+}
+
+function cleanPathLabel(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^["'`\u201c\u201d\u2018\u2019]+|["'`\u201c\u201d\u2018\u2019]+$/g, "")
+    .replace(/^[([{<\u3008\u300a]+|[)\]}>.,;:!?\u3002\uff0c\uff1b\uff1a\uff01\uff1f]+$/g, "");
 }
 
 function normalizeLocalPath(value) {

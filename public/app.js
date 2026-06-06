@@ -139,13 +139,12 @@ function renderCurrent() {
     node.innerHTML = `
       <div class="role">${message.role === "user" ? "You" : "OpenCode"}</div>
       <div class="bubble">
-        <div class="content">${text ? renderMessageText(text, message.resources || []) : ""}</div>
-        ${renderResourceCards(message.resources || [])}
+        <div class="content">${text ? renderPathText(text, message.paths || []) : ""}</div>
         ${renderActivities(message.activities || [])}
         ${message.error ? `<div class="status-bar error-text">${escapeHtml(message.error)}</div>` : ""}
       </div>
     `;
-    bindResourceActions(node);
+    bindPathActions(node);
     $("messages").appendChild(node);
   }
   $("messages").scrollTop = $("messages").scrollHeight;
@@ -154,9 +153,8 @@ function renderCurrent() {
 function renderActivities(activities) {
   if (!activities.length) return "";
   return `<div class="activity-list">${activities.map((activity) => {
-    const cleanedDetail = removeResourcePaths(activity.detail || "", activity.resources || []);
-    const detail = cleanedDetail ? `<pre>${escapeHtml(cleanedDetail)}</pre>` : "";
-    const expanded = activity.status === "running" || activity.resources?.length;
+    const detail = activity.detail ? `<pre>${renderPathText(activity.detail, activity.paths || [])}</pre>` : "";
+    const expanded = activity.status === "running";
     return `
       <details class="activity-item ${escapeHtml(activity.status || "")}" ${expanded ? "open" : ""}>
         <summary>
@@ -165,7 +163,6 @@ function renderActivities(activities) {
           <small>${escapeHtml(activity.status || "")}</small>
         </summary>
         ${detail}
-        ${renderResourceCards(activity.resources || [], true)}
       </details>
     `;
   }).join("")}</div>`;
@@ -909,69 +906,42 @@ function cleanMessageText(value) {
     .trim();
 }
 
-function renderMessageText(text, resources) {
-  const paths = [...new Map(
-    resources
-      .filter((item) => item?.path)
-      .map((item) => [String(item.path).toLowerCase(), item])
-  ).values()].sort((a, b) => b.path.length - a.path.length);
-  return escapeHtml(removeResourcePaths(text, paths));
-}
-
-function removeResourcePaths(text, resources) {
-  let output = String(text || "");
-  for (const resource of [...resources].sort((a, b) => b.path.length - a.path.length)) {
-    output = output.split(resource.path).join("");
+function renderPathText(text, paths) {
+  const matches = [];
+  const value = String(text || "");
+  const lower = value.toLowerCase();
+  for (const item of paths || []) {
+    const label = String(item?.label || "");
+    if (!label) continue;
+    const needle = label.toLowerCase();
+    let index = lower.indexOf(needle);
+    while (index >= 0) {
+      matches.push({ index, end: index + label.length, item });
+      index = lower.indexOf(needle, index + needle.length);
+    }
   }
-  return output
-    .replace(/^[ \t]*(?:[-*|]+\s*)?$/gm, "")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  matches.sort((a, b) => a.index - b.index || b.end - a.end);
+
+  let cursor = 0;
+  let output = "";
+  for (const match of matches) {
+    if (match.index < cursor) continue;
+    output += escapeHtml(value.slice(cursor, match.index));
+    output += `<button class="openable-path ${escapeHtml(match.item.type)}" type="button" data-open-path="${escapeHtml(match.item.path)}" title="${match.item.type === "directory" ? "Open folder" : "Open file"}">${escapeHtml(value.slice(match.index, match.end))}</button>`;
+    cursor = match.end;
+  }
+  return output + escapeHtml(value.slice(cursor));
 }
 
-function renderResourceCards(resources, compact = false) {
-  const unique = [...new Map(
-    resources.filter((item) => item?.path).map((item) => [item.path.toLowerCase(), item])
-  ).values()];
-  if (!unique.length) return "";
-  return `<div class="resource-list${compact ? " compact" : ""}">${unique.map((resource) => {
-    const name = resourceName(resource.path);
-    const extension = resourceExtension(name);
-    return `
-      <article class="resource-card">
-        <div class="resource-badge">${escapeHtml(extension || "DIR")}</div>
-        <div class="resource-info">
-          <strong title="${escapeHtml(resource.path)}">${escapeHtml(name)}</strong>
-          <small>${escapeHtml(resourceParent(resource.path))}</small>
-        </div>
-        <div class="resource-actions">
-          <button class="primary" type="button" data-resource-action="open" data-resource-path="${escapeHtml(resource.path)}">Open</button>
-          <button type="button" data-resource-action="locate" data-resource-path="${escapeHtml(resource.path)}">Folder</button>
-          <button class="resource-copy" type="button" data-resource-action="copy" data-resource-path="${escapeHtml(resource.path)}" title="Copy path">Copy</button>
-        </div>
-      </article>
-    `;
-  }).join("")}</div>`;
-}
-
-function bindResourceActions(root) {
-  for (const button of root.querySelectorAll("[data-resource-action]")) {
+function bindPathActions(root) {
+  for (const button of root.querySelectorAll("[data-open-path]")) {
     button.addEventListener("click", async () => {
-      const action = button.dataset.resourceAction;
-      const path = button.dataset.resourcePath;
+      const path = button.dataset.openPath;
       try {
-        if (action === "copy") {
-          await copyText(path);
-          const original = button.textContent;
-          button.textContent = "Copied";
-          window.setTimeout(() => { button.textContent = original; }, 1200);
-          return;
-        }
         button.disabled = true;
         await request("/api/local-path", {
           method: "POST",
-          body: JSON.stringify({ path, action }),
+          body: JSON.stringify({ path, action: "open" }),
         });
       } catch (error) {
         setComposerStatus(error.message);
@@ -980,38 +950,6 @@ function bindResourceActions(root) {
       }
     });
   }
-}
-
-function resourceName(path) {
-  return String(path).split(/[\\/]/).filter(Boolean).pop() || path;
-}
-
-function resourceParent(path) {
-  const value = String(path);
-  const index = Math.max(value.lastIndexOf("\\"), value.lastIndexOf("/"));
-  return index > 0 ? value.slice(0, index) : value;
-}
-
-function resourceExtension(name) {
-  const match = /\.([^.]{1,8})$/.exec(name);
-  return match ? match[1].toUpperCase() : "";
-}
-
-async function copyText(value) {
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(value);
-      return;
-    } catch {}
-  }
-  const input = document.createElement("textarea");
-  input.value = value;
-  input.style.position = "fixed";
-  input.style.opacity = "0";
-  document.body.appendChild(input);
-  input.select();
-  document.execCommand("copy");
-  input.remove();
 }
 
 function readStoredJson(key, fallback) {
