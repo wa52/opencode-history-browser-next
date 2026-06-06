@@ -14,7 +14,8 @@ await mkdir(configDir, { recursive: true });
 const lock = await acquireInstanceLock();
 if (!lock) process.exit(0);
 const port = await availablePort(4096);
-const child = spawn(resolveOpenCode(), ["serve", "--hostname=127.0.0.1", `--port=${port}`], {
+const opencodeCommand = resolveOpenCode();
+const child = spawn(opencodeCommand, ["serve", "--hostname=127.0.0.1", `--port=${port}`], {
   cwd: process.cwd(),
   env: process.env,
   windowsHide: true,
@@ -29,6 +30,7 @@ const browserHost = await startBrowserHost({
   client,
   headless: true,
   opencodeUrl,
+  opencodeCommand,
   kv: {
     get(key, fallback) {
       return key in store ? store[key] : fallback;

@@ -130,6 +130,7 @@ function renderCurrent() {
   $("detailTokens").textContent = `${current.tokensInput || 0} in / ${current.tokensOutput || 0} out`;
 
   for (const message of current.messages) {
+    if (message.aborted && !message.text) continue;
     if (!message.text && !message.extras.length && !message.activities?.length) continue;
     const node = document.createElement("article");
     const text = cleanMessageText(message.text || "");
@@ -138,11 +139,14 @@ function renderCurrent() {
     node.innerHTML = `
       <div class="role">${message.role === "user" ? "You" : "OpenCode"}</div>
       <div class="bubble">
-        <div class="content">${text ? escapeHtml(text) : ""}</div>
+        <div class="content">${text ? renderMessageText(text, message.localPaths || []) : ""}</div>
         ${renderActivities(message.activities || [])}
         ${message.error ? `<div class="status-bar error-text">${escapeHtml(message.error)}</div>` : ""}
       </div>
     `;
+    for (const pathButton of node.querySelectorAll("[data-local-path]")) {
+      pathButton.addEventListener("click", () => openLocalPathMenu(pathButton.dataset.localPath));
+    }
     $("messages").appendChild(node);
   }
   $("messages").scrollTop = $("messages").scrollHeight;
@@ -560,13 +564,14 @@ function changeTheme() {
 
 async function sendPrompt(event) {
   event.preventDefault();
-  if (promptWatcher) {
-    await abortPrompt(activePromptSessionID);
-    return;
-  }
   if (sending) return;
   const text = $("promptInput").value.trim();
   const files = attachments.map(({ filename, mime, url }) => ({ filename, mime, url }));
+  if (promptWatcher) {
+    if (!text && !files.length) await abortPrompt(activePromptSessionID);
+    else setComposerStatus("OpenCode is still responding. Wait for it to finish or press Stop with an empty input.");
+    return;
+  }
   if (!text && !files.length) return;
   if (text.startsWith("/") && !files.length) {
     await runBrowserCommand(text);
@@ -900,6 +905,95 @@ function cleanMessageText(value) {
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function renderMessageText(text, localPaths) {
+  const paths = [...new Map(
+    localPaths
+      .filter((item) => item?.path)
+      .map((item) => [String(item.path).toLowerCase(), item])
+  ).values()].sort((a, b) => b.path.length - a.path.length);
+  if (!paths.length) return escapeHtml(text);
+
+  const lower = text.toLowerCase();
+  const matches = [];
+  for (const item of paths) {
+    const needle = item.path.toLowerCase();
+    let index = lower.indexOf(needle);
+    while (index >= 0) {
+      matches.push({ index, end: index + item.path.length, item });
+      index = lower.indexOf(needle, index + needle.length);
+    }
+  }
+  matches.sort((a, b) => a.index - b.index || b.end - a.end);
+
+  let cursor = 0;
+  let output = "";
+  for (const match of matches) {
+    if (match.index < cursor) continue;
+    output += escapeHtml(text.slice(cursor, match.index));
+    const label = text.slice(match.index, match.end);
+    output += `<button class="local-path" type="button" data-local-path="${escapeHtml(match.item.path)}" title="Local path">${escapeHtml(label)}</button>`;
+    cursor = match.end;
+  }
+  return output + escapeHtml(text.slice(cursor));
+}
+
+async function openLocalPathMenu(path) {
+  openUtilityDialog("Local path", '<div class="utility-loading">Checking path...</div>');
+  try {
+    const data = await request("/api/local-path", {
+      method: "POST",
+      body: JSON.stringify({ path, action: "info" }),
+    });
+    const fileActions = data.type === "file"
+      ? '<button type="button" data-path-action="reveal">Show in folder</button>'
+      : "";
+    $("utilityBody").innerHTML = `
+      <div class="local-path-dialog">
+        <code>${escapeHtml(data.path)}</code>
+        <div class="local-path-actions">
+          <button class="primary" type="button" data-path-action="open">${data.type === "directory" ? "Open folder" : "Open"}</button>
+          ${fileActions}
+          <button type="button" data-path-action="copy">Copy path</button>
+        </div>
+      </div>
+    `;
+    for (const button of $("utilityBody").querySelectorAll("[data-path-action]")) {
+      button.addEventListener("click", async () => {
+        const action = button.dataset.pathAction;
+        if (action === "copy") {
+          await copyText(data.path);
+          button.textContent = "Copied";
+          return;
+        }
+        await request("/api/local-path", {
+          method: "POST",
+          body: JSON.stringify({ path: data.path, action }),
+        });
+        $("utilityDialog").close();
+      });
+    }
+  } catch (error) {
+    $("utilityBody").innerHTML = `<div class="utility-empty">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+async function copyText(value) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return;
+    } catch {}
+  }
+  const input = document.createElement("textarea");
+  input.value = value;
+  input.style.position = "fixed";
+  input.style.opacity = "0";
+  document.body.appendChild(input);
+  input.select();
+  document.execCommand("copy");
+  input.remove();
 }
 
 function readStoredJson(key, fallback) {

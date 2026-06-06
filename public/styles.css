@@ -161,24 +161,64 @@ button:disabled {
 }
 
 .session-list {
-  overflow-y: scroll;
+  overflow-y: auto;
   overflow-x: hidden;
   padding: 0 10px 48px;
   min-height: 0;
   flex: 1 1 auto;
-  scrollbar-gutter: stable;
+  scrollbar-width: none;
 }
 
 .session-list::-webkit-scrollbar,
-.messages::-webkit-scrollbar {
-  width: 10px;
+.messages::-webkit-scrollbar,
+.details::-webkit-scrollbar,
+.model-menu::-webkit-scrollbar,
+.utility-body::-webkit-scrollbar,
+.content::-webkit-scrollbar,
+.activity-list::-webkit-scrollbar,
+.activity-item pre::-webkit-scrollbar,
+.prompt-input::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.session-list:hover,
+.messages:hover,
+.details:hover,
+.model-menu:hover,
+.utility-body:hover,
+.content:hover,
+.activity-list:hover,
+.activity-item pre:hover,
+.prompt-input:hover {
+  scrollbar-width: thin;
+}
+
+.session-list:hover::-webkit-scrollbar,
+.messages:hover::-webkit-scrollbar,
+.details:hover::-webkit-scrollbar,
+.model-menu:hover::-webkit-scrollbar,
+.utility-body:hover::-webkit-scrollbar,
+.content:hover::-webkit-scrollbar,
+.activity-list:hover::-webkit-scrollbar,
+.activity-item pre:hover::-webkit-scrollbar,
+.prompt-input:hover::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 
 .session-list::-webkit-scrollbar-thumb,
-.messages::-webkit-scrollbar-thumb {
-  background: #c9c9bf;
+.messages::-webkit-scrollbar-thumb,
+.details::-webkit-scrollbar-thumb,
+.model-menu::-webkit-scrollbar-thumb,
+.utility-body::-webkit-scrollbar-thumb,
+.content::-webkit-scrollbar-thumb,
+.activity-list::-webkit-scrollbar-thumb,
+.activity-item pre::-webkit-scrollbar-thumb,
+.prompt-input::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
   border: 2px solid transparent;
-  border-radius: var(--radius-lg);
+  border-radius: 999px;
   background-clip: content-box;
 }
 
@@ -345,6 +385,7 @@ button:disabled {
 
 .messages {
   overflow: auto;
+  scrollbar-width: none;
   padding: 8px 4px 18px;
   min-height: 0;
   flex: 1 1 auto;
@@ -575,43 +616,20 @@ button:disabled {
   border-radius: 22px;
   display: flex;
   flex-direction: column;
-  overflow: auto;
-  scrollbar-width: none;
+  overflow: hidden;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   box-shadow: 0 5px 18px rgba(25, 25, 20, 0.04);
 }
 
-.bubble:hover {
-  scrollbar-width: thin;
-}
-
-.bubble::-webkit-scrollbar,
-.activity-item pre::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-}
-
-.bubble:hover::-webkit-scrollbar,
-.activity-item pre:hover::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.bubble::-webkit-scrollbar-thumb,
-.activity-item pre::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--muted) 45%, transparent);
-  border: 2px solid transparent;
-  border-radius: 999px;
-  background-clip: content-box;
-}
-
 .content {
-  flex: 1;
+  flex: 1 1 auto;
   font-size: 15px;
   line-height: 1.5;
-  margin-bottom: 24px;
+  margin-bottom: 12px;
   min-height: 0;
+  overflow: auto;
+  scrollbar-width: none;
 }
 
 .content:empty {
@@ -621,7 +639,10 @@ button:disabled {
 .activity-list {
   display: grid;
   gap: 5px;
-  margin-top: auto;
+  flex: 0 0 auto;
+  max-height: 132px;
+  overflow: auto;
+  scrollbar-width: none;
 }
 
 .activity-item {
@@ -660,10 +681,6 @@ button:disabled {
   font: 11px/1.45 Consolas, monospace;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-.activity-item pre:hover {
-  scrollbar-width: thin;
 }
 
 .activity-item.error .activity-dot {
@@ -733,6 +750,7 @@ button:disabled {
   max-height: 100%;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-width: none;
   padding: 1px;
 }
 
@@ -865,6 +883,7 @@ button:disabled {
   max-height: min(360px, 42vh);
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-width: none;
   margin-top: 6px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -1002,7 +1021,42 @@ button:disabled {
 .utility-body {
   max-height: calc(100vh - 118px);
   overflow: auto;
+  scrollbar-width: none;
   padding: 14px;
+}
+
+.local-path {
+  display: inline;
+  border: 0;
+  border-bottom: 1px dashed color-mix(in srgb, var(--accent) 70%, transparent);
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  text-align: left;
+}
+
+.local-path:hover {
+  border-bottom-style: solid;
+}
+
+.local-path-dialog {
+  display: grid;
+  gap: 14px;
+}
+
+.local-path-dialog code {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  overflow-wrap: anywhere;
+}
+
+.local-path-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .utility-form {
@@ -1144,6 +1198,7 @@ button:disabled {
   color: var(--text);
   line-height: 1.45;
   padding: 8px 6px;
+  scrollbar-width: none;
 }
 
 .send-button {
