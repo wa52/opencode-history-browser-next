@@ -60,7 +60,8 @@ To verify an install:
 - Resolve relative paths from the current session workspace
 - Support local drives, mapped drives, junctions, symlinks, and accessible UNC shares
 - Open files with the system default app and folders in Explorer
-- Browser commands: `/skills` and `/mcp`
+- Browser commands: `/skills`, `/mcp`, `/logs`, and `/uninstall`
+- Persistent diagnostics at `~/.config/opencode/history-browser.log`
 - Install self-check with `/history-browser-doctor`
 
 Closing the browser also stops the hidden OpenCode host after a short grace
@@ -90,6 +91,7 @@ Run this inside OpenCode:
 /history-browser-uninstall
 ```
 
+Or use Browser settings > Uninstall, or type `/uninstall` in the browser input.
 Then fully restart OpenCode.
 
 ## Requirements
@@ -106,5 +108,8 @@ If `/history-browser` is missing after restart, run the update command above and
 On Windows, use `opencode.cmd` instead of `opencode` if PowerShell blocks `opencode.ps1`.
 
 If the browser opens but history does not load, run `/history-browser-doctor` inside OpenCode.
+
+Open Browser settings > Logs, or type `/logs`, to inspect startup, CLI, request,
+and prompt errors. The log file is `~/.config/opencode/history-browser.log`.
 
 The browser URL contains a temporary token. Reopen it with `/history-browser` instead of reusing an old URL.

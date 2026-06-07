@@ -843,6 +843,13 @@ button:disabled {
   margin-bottom: 0;
 }
 
+.settings-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 .field-label {
   display: block;
   color: var(--muted);
@@ -1118,6 +1125,42 @@ button:disabled {
   color: var(--muted);
   padding: 16px 4px;
   text-align: center;
+}
+
+.log-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.log-toolbar code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.log-toolbar > div {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.log-output {
+  max-height: min(62vh, 620px);
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  font: 12px/1.55 Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .composer-status {

@@ -9,6 +9,7 @@
   },
   "files": [
     "install-redirect.js",
+    "log.js",
     "public",
     "standalone.js",
     "tui.js",

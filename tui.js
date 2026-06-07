@@ -8,6 +8,7 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
+import { clearLogs, logFile, readLogs, writeLog } from "./log.js";
 
 const id = "opencode-history-browser";
 const root = dirname(fileURLToPath(import.meta.url));
@@ -25,8 +26,8 @@ const serverSockets = new Set();
 async function tui(api) {
   if (!cliMode) {
     registerShutdownHandlers();
-    ensureBrowserLauncher().catch(() => {});
-    ensureCommandRedirect().catch(() => {});
+    ensureBrowserLauncher().catch((error) => writeLog("error", "launcher.install.failed", { error }));
+    ensureCommandRedirect().catch((error) => writeLog("error", "redirect.install.failed", { error }));
   }
   const start = async () => {
     serverUrl = await ensureServer(api);
@@ -40,6 +41,7 @@ async function tui(api) {
   };
   const safeStart = () => {
     start().catch((error) => {
+      writeLog("error", "browser.start.failed", { error });
       api.ui.toast({
         variant: "error",
         title: "History Browser failed",
@@ -92,6 +94,11 @@ async function ensureServer(api) {
   lastBrowserSeen = Date.now();
   server = createServer((request, response) => {
     handleRequest(api, request, response).catch((error) => {
+      writeLog("error", "request.failed", {
+        method: request.method,
+        path: String(request.url || "").replace(/([?&]token=)[^&]+/i, "$1[redacted]"),
+        error,
+      });
       sendJson(response, { error: errorMessage(error) }, 500);
     });
   });
@@ -108,6 +115,7 @@ async function ensureServer(api) {
     api.kv.set("history-browser:server-token", serverToken);
   }
   serverUrl = `http://127.0.0.1:${port}/?token=${serverToken}`;
+  await writeLog("info", "browser.server.started", { port, headless: Boolean(api.headless) });
   startIdleMonitor();
   return serverUrl;
 }
@@ -222,6 +230,27 @@ async function handleRequest(api, request, response) {
     return sendJson(response, { servers: Object.entries(status || {}).map(([name, value]) => ({ name, ...value })) });
   }
 
+  if (request.method === "GET" && url.pathname === "/api/logs") {
+    return sendJson(response, { path: logFile, content: await readLogs() });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/logs/open") {
+    await openLocalPath(logFile, "file");
+    return sendJson(response, { ok: true, path: logFile });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/logs/clear") {
+    await clearLogs();
+    await writeLog("info", "logs.cleared");
+    return sendJson(response, { ok: true, path: logFile });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/uninstall") {
+    const result = await uninstallPlugin();
+    await writeLog("info", "plugin.uninstalled", result);
+    return sendJson(response, { ok: true, ...result });
+  }
+
   if (request.method === "POST" && url.pathname === "/api/open-terminal") {
     const body = await readJson(request);
     const sessionID = String(body.sessionID || "").trim();
@@ -231,12 +260,23 @@ async function handleRequest(api, request, response) {
       if (result.error || !result.data) return sendJson(response, { error: "Session not found" }, 404);
       directory = result.data.directory || directory;
     }
-    await openOpenCodeTerminal({
-      directory,
-      sessionID,
-      serverUrl: api.opencodeUrl,
-      preferredCommand: api.opencodeCommand,
-    });
+    try {
+      await openOpenCodeTerminal({
+        directory,
+        sessionID,
+        serverUrl: api.opencodeUrl,
+        preferredCommand: api.opencodeCommand,
+      });
+    } catch (error) {
+      await writeLog("error", "cli.open.failed", {
+        directory,
+        sessionID,
+        serverUrl: api.opencodeUrl,
+        preferredCommand: api.opencodeCommand,
+        error,
+      });
+      throw error;
+    }
     return sendJson(response, { ok: true, sessionID, directory });
   }
 
@@ -816,7 +856,18 @@ async function promptSession(api, { sessionID, text, model, files = [] }) {
   const agent = session?.agent || listedSession?.agent;
   if (agent) payload.agent = agent;
   const method = api.client.session.promptAsync || api.client.session.prompt;
-  await assertOk(method.call(api.client.session, payload));
+  try {
+    await assertOk(method.call(api.client.session, payload));
+  } catch (error) {
+    await writeLog("error", "prompt.failed", {
+      sessionID,
+      model: selectedModel,
+      agent,
+      method: method === api.client.session.promptAsync ? "promptAsync" : "prompt",
+      error,
+    });
+    throw error;
+  }
   return { method: "session", model: selectedModel };
 }
 
@@ -1150,6 +1201,7 @@ async function ensureBrowserLauncher() {
   ].filter((desktop, index, values) => desktop && existsSync(desktop) && values.indexOf(desktop) === index);
   await writeFile(launcher, script, "utf8");
   await Promise.all(candidates.map((desktop) => writeFile(join(desktop, "OpenCode Browser.vbs"), script, "utf8")));
+  await writeLog("info", "launcher.installed", { launcher, nodeExecutable });
 }
 
 function resolveNodeExecutable() {
@@ -1196,6 +1248,7 @@ async function ensureCommandRedirect() {
       "",
     ].join("\r\n"), "utf8");
   }
+  await writeLog("info", "redirect.installed", { npmDir });
 }
 
 async function restoreCommandRedirect() {
@@ -1229,9 +1282,10 @@ async function openOpenCodeTerminal({ directory, sessionID, serverUrl, preferred
     const command = await resolveOpenCodeTerminalCommand(preferredCommand);
     const cwd = existsSync(directory) ? directory : homedir();
     const env = { ...process.env, OPENCODE_HISTORY_CLI: "1" };
-    const terminalCommand = /\.cmd$/i.test(command)
-      ? ["cmd.exe", "/d", "/k", command, ...args]
+    const terminalCommand = /\.(?:cmd|bat)$/i.test(command)
+      ? ["cmd.exe", "/d", "/k", "call", command, ...args]
       : [command, ...args];
+    await writeLog("info", "cli.open", { command, args, cwd, terminal: await commandExists("wt.exe") ? "wt.exe" : terminalCommand[0] });
     if (await commandExists("wt.exe")) {
       await spawnVisible("wt.exe", ["-w", "new", "-d", cwd, ...terminalCommand], { cwd, env });
     } else {
@@ -1252,9 +1306,9 @@ async function openOpenCodeTerminal({ directory, sessionID, serverUrl, preferred
 async function resolveOpenCodeTerminalCommand(preferredCommand) {
   const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
   const candidates = [
-    preferredCommand,
+    isOpenCodeCommand(preferredCommand) ? preferredCommand : undefined,
     process.env.OPENCODE_BINARY,
-    /opencode/i.test(process.execPath) ? process.execPath : undefined,
+    join(appData, "npm", "opencode-cli.cmd"),
     join(appData, "npm", "node_modules", "opencode-ai", "bin", "opencode.exe"),
     join(appData, "npm", "opencode.cmd"),
     "opencode.exe",
@@ -1262,10 +1316,16 @@ async function resolveOpenCodeTerminalCommand(preferredCommand) {
     "opencode",
   ].filter(Boolean);
   for (const candidate of [...new Set(candidates)]) {
+    if (!isOpenCodeCommand(candidate)) continue;
     if (isAbsolute(candidate) && existsSync(candidate)) return candidate;
     if (!isAbsolute(candidate) && await commandExists(candidate)) return candidate;
   }
   throw new Error("OpenCode CLI executable was not found on this computer.");
+}
+
+function isOpenCodeCommand(command) {
+  if (!command || typeof command !== "string") return false;
+  return /(?:^|[\\/])opencode(?:-cli)?(?:\.(?:exe|cmd|bat|ps1))?$/i.test(command.trim());
 }
 
 async function commandExists(command) {
@@ -1288,6 +1348,7 @@ function spawnVisible(command, args, options) {
     });
     child.once("error", reject);
     child.once("spawn", () => {
+      writeLog("info", "process.spawned", { command, args, pid: child.pid }).catch(() => {});
       child.unref();
       resolve();
     });
@@ -1295,13 +1356,7 @@ function spawnVisible(command, args, options) {
 }
 
 async function uninstallSelf(api) {
-  await restoreCommandRedirect().catch(() => {});
-  const files = tuiConfigCandidates();
-  const removed = [];
-  for (const file of files) {
-    const changed = await removePluginFromConfig(file);
-    if (changed) removed.push(file);
-  }
+  const { removed } = await uninstallPlugin();
 
   if (!removed.length) {
     api.ui.toast({
@@ -1319,6 +1374,20 @@ async function uninstallSelf(api) {
     message: "Restart OpenCode to finish removing it.",
     duration: 8000,
   });
+}
+
+async function uninstallPlugin() {
+  await restoreCommandRedirect();
+  const removed = [];
+  for (const file of tuiConfigCandidates()) {
+    if (await removePluginFromConfig(file)) removed.push(file);
+  }
+  return {
+    removed,
+    message: removed.length
+      ? "Plugin removed. Close this page and restart OpenCode."
+      : "Plugin entry was not found. The command redirect was still restored.",
+  };
 }
 
 function tuiConfigCandidates() {

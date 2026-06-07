@@ -20,6 +20,8 @@ const selectedIds = new Set();
 const browserCommands = [
   { command: "/skills", label: "View installed skills" },
   { command: "/mcp", label: "View MCP status" },
+  { command: "/logs", label: "View browser error logs" },
+  { command: "/uninstall", label: "Uninstall this plugin" },
 ];
 const apiToken = new URLSearchParams(window.location.search).get("token") || "";
 const promptPollMs = 1500;
@@ -621,8 +623,12 @@ async function runBrowserCommand(value) {
     await openSkillsDialog();
   } else if (command === "/mcp") {
     await openMcpDialog();
+  } else if (command === "/logs") {
+    await openLogsDialog();
+  } else if (command === "/uninstall") {
+    await uninstallPlugin();
   } else {
-    setComposerStatus("Available commands: /skills, /mcp");
+    setComposerStatus("Available commands: /skills, /mcp, /logs, /uninstall");
     return;
   }
   $("promptInput").value = "";
@@ -692,6 +698,48 @@ async function openMcpDialog() {
     `).join("") : '<div class="utility-empty">No MCP servers configured.</div>';
   } catch (error) {
     $("utilityBody").innerHTML = `<div class="utility-empty">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+async function openLogsDialog() {
+  openUtilityDialog("History Browser logs", '<div class="utility-loading">Loading logs...</div>');
+  try {
+    const data = await request("/api/logs");
+    $("utilityBody").innerHTML = `
+      <div class="log-toolbar">
+        <code title="${escapeHtml(data.path || "")}">${escapeHtml(data.path || "history-browser.log")}</code>
+        <div>
+          <button id="openLogFile" class="small-button" type="button">Open file</button>
+          <button id="clearLogFile" class="small-button" type="button">Clear</button>
+        </div>
+      </div>
+      <pre class="log-output">${escapeHtml(data.content || "No log entries yet.")}</pre>
+    `;
+    $("openLogFile").onclick = async () => request("/api/logs/open", { method: "POST" });
+    $("clearLogFile").onclick = async () => {
+      await request("/api/logs/clear", { method: "POST" });
+      await openLogsDialog();
+    };
+  } catch (error) {
+    $("utilityBody").innerHTML = `<div class="utility-empty">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+async function uninstallPlugin() {
+  const confirmed = confirm("Uninstall History Browser and restore the original OpenCode command?\n\nOpenCode must be restarted afterward.");
+  if (!confirmed) return;
+  setComposerStatus("Uninstalling History Browser...");
+  try {
+    const data = await request("/api/uninstall", { method: "POST" });
+    openUtilityDialog("History Browser uninstalled", `
+      <div class="utility-empty">
+        <p>${escapeHtml(data.message || "Plugin removed.")}</p>
+        <small>${escapeHtml((data.removed || []).join("\n"))}</small>
+      </div>
+    `);
+    setComposerStatus("Uninstalled. Restart OpenCode to finish.");
+  } catch (error) {
+    setComposerStatus(error.message);
   }
 }
 
@@ -991,6 +1039,8 @@ $("modelSearch").addEventListener("keydown", (event) => {
   if (event.key === "Escape") $("modelMenu").classList.remove("visible");
 });
 $("modelReset").onclick = resetModel;
+$("viewLogs").onclick = openLogsDialog;
+$("uninstallPlugin").onclick = uninstallPlugin;
 $("themeSelect").onchange = changeTheme;
 $("attachBtn").onclick = openImagePicker;
 $("imageInput").addEventListener("change", (event) => {

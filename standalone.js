@@ -1,26 +1,49 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, open, readFile, unlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
+import { promisify } from "node:util";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 import { startBrowserHost } from "./tui.js";
+import { writeLog } from "./log.js";
 
 const configDir = join(homedir(), ".config", "opencode");
 const kvFile = join(configDir, "history-browser-kv.json");
 const lockFile = join(configDir, "history-browser.lock");
+const execFileAsync = promisify(execFile);
+process.on("uncaughtException", async (error) => {
+  await writeLog("error", "standalone.uncaught", { error });
+  process.exit(1);
+});
+process.on("unhandledRejection", async (error) => {
+  await writeLog("error", "standalone.unhandled", { error });
+  process.exit(1);
+});
 await mkdir(configDir, { recursive: true });
+await writeLog("info", "standalone.start", {
+  platform: process.platform,
+  node: process.execPath,
+  cwd: process.cwd(),
+});
 const lock = await acquireInstanceLock();
 if (!lock) process.exit(0);
 const port = await availablePort(4096);
-const opencodeCommand = resolveOpenCode();
-const child = spawn(opencodeCommand, ["serve", "--hostname=127.0.0.1", `--port=${port}`], {
+const opencodeCommand = await resolveOpenCode();
+const launch = commandLaunch(opencodeCommand, ["serve", "--hostname=127.0.0.1", `--port=${port}`]);
+await writeLog("info", "opencode.serve.start", { command: launch.command, args: launch.args, port });
+const child = spawn(launch.command, launch.args, {
   cwd: process.cwd(),
-  env: process.env,
+  env: { ...process.env, OPENCODE_HISTORY_CLI: "1" },
   windowsHide: true,
   stdio: ["ignore", "pipe", "pipe"],
 });
+
+child.stdout.on("data", (chunk) => writeLog("info", "opencode.stdout", { text: clipOutput(chunk) }));
+child.stderr.on("data", (chunk) => writeLog("error", "opencode.stderr", { text: clipOutput(chunk) }));
+child.once("error", (error) => writeLog("error", "opencode.spawn.failed", { error, command: launch.command, args: launch.args }));
+child.once("exit", (code, signal) => writeLog("info", "opencode.serve.exit", { code, signal }));
 
 await waitForServer(child, port);
 const opencodeUrl = `http://127.0.0.1:${port}`;
@@ -41,6 +64,7 @@ const browserHost = await startBrowserHost({
     },
   },
 });
+await writeLog("info", "standalone.ready", { opencodeUrl, browserUrl: browserHost.url.replace(/\?.*/, "") });
 await lock.truncate(0);
 await lock.writeFile(JSON.stringify({ url: browserHost.url, pid: process.pid }), "utf8");
 
@@ -109,13 +133,55 @@ function openBrowser(url) {
   spawn(command, [url], { detached: true, stdio: "ignore" }).unref();
 }
 
-function resolveOpenCode() {
-  if (process.platform === "win32") {
-    const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
-    const executable = join(appData, "npm", "node_modules", "opencode-ai", "bin", "opencode.exe");
-    if (existsSync(executable)) return executable;
+async function resolveOpenCode() {
+  const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
+  const candidates = process.platform === "win32"
+    ? [
+        process.env.OPENCODE_BINARY,
+        join(appData, "npm", "opencode-cli.cmd"),
+        join(appData, "npm", "node_modules", "opencode-ai", "bin", "opencode.exe"),
+        join(appData, "npm", "opencode.exe"),
+        "opencode-cli.cmd",
+        "opencode.exe",
+        "opencode.cmd",
+      ]
+    : [process.env.OPENCODE_BINARY, "opencode"];
+  for (const candidate of [...new Set(candidates.filter(Boolean))]) {
+    if (!isOpenCodeCommand(candidate)) continue;
+    if (isAbsolute(candidate) && existsSync(candidate)) {
+      await writeLog("info", "opencode.command.resolved", { command: candidate, source: "file" });
+      return candidate;
+    }
+    if (!isAbsolute(candidate) && await commandExists(candidate)) {
+      await writeLog("info", "opencode.command.resolved", { command: candidate, source: "path" });
+      return candidate;
+    }
   }
-  return "opencode";
+  throw new Error("OpenCode CLI executable was not found. Run `where opencode` and reinstall the plugin.");
+}
+
+function commandLaunch(command, args) {
+  if (process.platform === "win32" && /\.(?:cmd|bat)$/i.test(command)) {
+    return { command: "cmd.exe", args: ["/d", "/c", "call", command, ...args] };
+  }
+  return { command, args };
+}
+
+function isOpenCodeCommand(command) {
+  return typeof command === "string" &&
+    /(?:^|[\\/])opencode(?:-cli)?(?:\.(?:exe|cmd|bat))?$/i.test(command.trim());
+}
+
+async function commandExists(command) {
+  try {
+    await execFileAsync(process.platform === "win32" ? "where.exe" : "which", [command], {
+      timeout: 5000,
+      windowsHide: true,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function availablePort(start) {
@@ -129,19 +195,35 @@ function availablePort(start) {
 
 function waitForServer(processHandle, targetPort) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("Timed out starting OpenCode server.")), 12000);
-    let output = "";
-    const inspect = (chunk) => {
-      output += chunk.toString();
-      if (!output.includes(`127.0.0.1:${targetPort}`)) return;
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(poller);
       clearTimeout(timer);
-      resolve();
+      callback(value);
     };
-    processHandle.stdout.on("data", inspect);
-    processHandle.stderr.on("data", inspect);
-    processHandle.once("error", reject);
-    processHandle.once("exit", (code) => reject(new Error(`OpenCode server exited with code ${code}.`)));
+    const poller = setInterval(async () => {
+      try {
+        const response = await fetch(`http://127.0.0.1:${targetPort}/global/health`, {
+          signal: AbortSignal.timeout(1000),
+        });
+        if (response.ok) finish(resolve);
+      } catch {}
+    }, 300);
+    const timer = setTimeout(() => {
+      const error = new Error("Timed out starting OpenCode server. See history-browser.log.");
+      writeLog("error", "opencode.serve.timeout", { port: targetPort, error });
+      finish(reject, error);
+    }, 20000);
+    processHandle.once("error", (error) => finish(reject, error));
+    processHandle.once("exit", (code) => finish(reject, new Error(`OpenCode server exited with code ${code}.`)));
   });
+}
+
+function clipOutput(chunk) {
+  const value = String(chunk || "").trim();
+  return value.length > 4000 ? `${value.slice(0, 4000)}...` : value;
 }
 
 async function readStore() {
