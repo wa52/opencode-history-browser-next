@@ -1,7 +1,15 @@
 {
-  "name": "opencode-history-browser",
-  "version": "0.1.0",
-  "description": "ChatGPT-style local browser UI for OpenCode history.",
+  "name": "opencode-history-browser-next",
+  "version": "0.2.0",
+  "description": "Portable browser UI for OpenCode sessions with diagnostics and local path actions.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wa52/opencode-history-browser-next.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wa52/opencode-history-browser-next/issues"
+  },
+  "homepage": "https://github.com/wa52/opencode-history-browser-next#readme",
   "type": "module",
   "exports": {
     ".": "./tui.js",
@@ -9,12 +17,19 @@
   },
   "files": [
     "install-redirect.js",
+    "lib",
     "log.js",
     "public",
     "standalone.js",
     "tui.js",
     "README.md"
   ],
+  "scripts": {
+    "check": "node --check tui.js && node --check standalone.js && node --check log.js && node --check public/app.js && node --check lib/cleanup.js && node --check lib/identity.js && node --check lib/opencode-cli.js && node --check lib/process-tree.js && node --check lib/redirect.js && node --check lib/static-files.js && node --check lib/write-queue.js && node --check scripts/browser-smoke.mjs && node --check scripts/startup-failure-smoke.mjs",
+    "test": "node --test",
+    "qa:browser": "node scripts/browser-smoke.mjs",
+    "qa:lifecycle": "node scripts/startup-failure-smoke.mjs"
+  },
   "keywords": [
     "opencode",
     "history",
@@ -26,6 +41,11 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@opencode-ai/sdk": "^1.4.17"
+    "@opencode-ai/sdk": "^1.17.3"
+  },
+  "devDependencies": {
+    "playwright": "^1.60.0",
+    "typescript": "^6.0.3",
+    "typescript-language-server": "^5.3.0"
   }
 }

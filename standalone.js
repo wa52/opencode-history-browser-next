@@ -1,44 +1,58 @@
-import { execFile, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { mkdir, open, readFile, unlink, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { unlinkSync } from "node:fs";
+import { mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
-import { homedir } from "node:os";
-import { isAbsolute, join } from "node:path";
-import { promisify } from "node:util";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 import { startBrowserHost } from "./tui.js";
 import { writeLog } from "./log.js";
+import { CONFIG_DIR, KV_FILE, LOCK_FILE } from "./lib/identity.js";
+import { createCleanupOnce } from "./lib/cleanup.js";
+import { commandLaunch, resolveOpenCodeCommand } from "./lib/opencode-cli.js";
+import { stopProcessTree, stopProcessTreeSync } from "./lib/process-tree.js";
+import { createWriteQueue } from "./lib/write-queue.js";
 
-const configDir = join(homedir(), ".config", "opencode");
-const kvFile = join(configDir, "history-browser-kv.json");
-const lockFile = join(configDir, "history-browser.lock");
-const execFileAsync = promisify(execFile);
-process.on("uncaughtException", async (error) => {
-  await writeLog("error", "standalone.uncaught", { error });
-  process.exit(1);
+const storeQueue = createWriteQueue(writeStore);
+let lock;
+let child;
+let fatalError = false;
+const closeAll = createCleanupOnce(async () => {
+  await storeQueue.flush().catch((error) => writeLog("error", "store.flush.failed", { error }));
+  await lock?.close().catch(() => {});
+  lock = undefined;
+  try {
+    unlinkSync(LOCK_FILE);
+  } catch {}
+  await stopProcessTree(child?.pid);
 });
-process.on("unhandledRejection", async (error) => {
-  await writeLog("error", "standalone.unhandled", { error });
-  process.exit(1);
-});
-await mkdir(configDir, { recursive: true });
+process.on("uncaughtException", (error) => handleFatalError("standalone.uncaught", error));
+process.on("unhandledRejection", (error) => handleFatalError("standalone.unhandled", error));
+await mkdir(CONFIG_DIR, { recursive: true });
 await writeLog("info", "standalone.start", {
   platform: process.platform,
   node: process.execPath,
   cwd: process.cwd(),
 });
-const lock = await acquireInstanceLock();
+lock = await acquireInstanceLock();
 if (!lock) process.exit(0);
 const port = await availablePort(4096);
-const opencodeCommand = await resolveOpenCode();
+const opencodeCommand = await resolveOpenCodeCommand();
 const launch = commandLaunch(opencodeCommand, ["serve", "--hostname=127.0.0.1", `--port=${port}`]);
 await writeLog("info", "opencode.serve.start", { command: launch.command, args: launch.args, port });
-const child = spawn(launch.command, launch.args, {
+child = spawn(launch.command, launch.args, {
   cwd: process.cwd(),
   env: { ...process.env, OPENCODE_HISTORY_CLI: "1" },
+  detached: process.platform !== "win32",
   windowsHide: true,
   stdio: ["ignore", "pipe", "pipe"],
 });
+registerCleanupHandlers();
+if (process.env.OPENCODE_HISTORY_BROWSER_FAIL_AFTER_SPAWN === "1") {
+  const delay = Number.parseInt(process.env.OPENCODE_HISTORY_BROWSER_FAIL_DELAY_MS || "", 10);
+  if (Number.isFinite(delay) && delay > 0) {
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+  throw new Error("Injected startup failure after OpenCode spawn.");
+}
 
 child.stdout.on("data", (chunk) => writeLog("info", "opencode.stdout", { text: clipOutput(chunk) }));
 child.stderr.on("data", (chunk) => writeLog("error", "opencode.stderr", { text: clipOutput(chunk) }));
@@ -54,42 +68,57 @@ const browserHost = await startBrowserHost({
   headless: true,
   opencodeUrl,
   opencodeCommand,
+  async shutdown() {
+    await closeAll();
+    process.exit(0);
+  },
   kv: {
     get(key, fallback) {
       return key in store ? store[key] : fallback;
     },
     set(key, value) {
       store[key] = value;
-      writeStore(store).catch(() => {});
+      storeQueue.enqueue(store).catch((error) => writeLog("error", "store.write.failed", { error }));
     },
   },
 });
 await writeLog("info", "standalone.ready", { opencodeUrl, browserUrl: browserHost.url.replace(/\?.*/, "") });
 await lock.truncate(0);
 await lock.writeFile(JSON.stringify({ url: browserHost.url, pid: process.pid }), "utf8");
+await lock.close();
+lock = undefined;
 
-let closing = false;
-function closeAll() {
-  if (closing) return;
-  closing = true;
-  child.kill();
-  lock.close().catch(() => {});
-  unlink(lockFile).catch(() => {});
+async function handleFatalError(event, error) {
+  if (fatalError) return;
+  fatalError = true;
+  await writeLog("error", event, { error }).catch(() => {});
+  await closeAll().catch(() => {});
+  process.exit(1);
 }
 
-process.once("exit", closeAll);
-for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
-  process.once(signal, () => {
-    closeAll();
+function registerCleanupHandlers() {
+  process.once("exit", () => {
+    try {
+      unlinkSync(LOCK_FILE);
+    } catch {}
+    stopProcessTreeSync(child?.pid);
+  });
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+    process.once(signal, async () => {
+      await closeAll();
+      process.exit(0);
+    });
+  }
+  child.once("exit", async () => {
+    await closeAll();
     process.exit(0);
   });
 }
-child.once("exit", () => process.exit(0));
 
 async function acquireInstanceLock() {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      return await open(lockFile, "wx");
+      return await open(LOCK_FILE, "wx");
     } catch (error) {
       if (error?.code !== "EEXIST") throw error;
       const existing = await waitForExistingBrowser();
@@ -97,7 +126,7 @@ async function acquireInstanceLock() {
         openBrowser(existing);
         return undefined;
       }
-      await unlink(lockFile).catch(() => {});
+      await unlink(LOCK_FILE).catch(() => {});
     }
   }
   throw new Error("Could not acquire the OpenCode browser lock.");
@@ -114,11 +143,11 @@ async function waitForExistingBrowser() {
 
 async function existingBrowserUrl() {
   try {
-    const value = JSON.parse(await readFile(lockFile, "utf8"));
+    const value = JSON.parse(await readFile(LOCK_FILE, "utf8"));
     if (!value?.url) return "";
     const response = await fetch(new URL("/api/health", value.url), { signal: AbortSignal.timeout(2500) });
     const data = await response.json();
-    return response.ok && data?.ok ? (data.url || value.url) : "";
+    return response.ok && data?.ok ? value.url : "";
   } catch {
     return "";
   }
@@ -131,57 +160,6 @@ function openBrowser(url) {
   }
   const command = process.platform === "darwin" ? "open" : "xdg-open";
   spawn(command, [url], { detached: true, stdio: "ignore" }).unref();
-}
-
-async function resolveOpenCode() {
-  const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
-  const candidates = process.platform === "win32"
-    ? [
-        process.env.OPENCODE_BINARY,
-        join(appData, "npm", "opencode-cli.cmd"),
-        join(appData, "npm", "node_modules", "opencode-ai", "bin", "opencode.exe"),
-        join(appData, "npm", "opencode.exe"),
-        "opencode-cli.cmd",
-        "opencode.exe",
-        "opencode.cmd",
-      ]
-    : [process.env.OPENCODE_BINARY, "opencode"];
-  for (const candidate of [...new Set(candidates.filter(Boolean))]) {
-    if (!isOpenCodeCommand(candidate)) continue;
-    if (isAbsolute(candidate) && existsSync(candidate)) {
-      await writeLog("info", "opencode.command.resolved", { command: candidate, source: "file" });
-      return candidate;
-    }
-    if (!isAbsolute(candidate) && await commandExists(candidate)) {
-      await writeLog("info", "opencode.command.resolved", { command: candidate, source: "path" });
-      return candidate;
-    }
-  }
-  throw new Error("OpenCode CLI executable was not found. Run `where opencode` and reinstall the plugin.");
-}
-
-function commandLaunch(command, args) {
-  if (process.platform === "win32" && /\.(?:cmd|bat)$/i.test(command)) {
-    return { command: "cmd.exe", args: ["/d", "/c", "call", command, ...args] };
-  }
-  return { command, args };
-}
-
-function isOpenCodeCommand(command) {
-  return typeof command === "string" &&
-    /(?:^|[\\/])opencode(?:-cli)?(?:\.(?:exe|cmd|bat))?$/i.test(command.trim());
-}
-
-async function commandExists(command) {
-  try {
-    await execFileAsync(process.platform === "win32" ? "where.exe" : "which", [command], {
-      timeout: 5000,
-      windowsHide: true,
-    });
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function availablePort(start) {
@@ -212,7 +190,7 @@ function waitForServer(processHandle, targetPort) {
       } catch {}
     }, 300);
     const timer = setTimeout(() => {
-      const error = new Error("Timed out starting OpenCode server. See history-browser.log.");
+      const error = new Error("Timed out starting OpenCode server. See history-browser-next.log.");
       writeLog("error", "opencode.serve.timeout", { port: targetPort, error });
       finish(reject, error);
     }, 20000);
@@ -228,13 +206,15 @@ function clipOutput(chunk) {
 
 async function readStore() {
   try {
-    return JSON.parse(await readFile(kvFile, "utf8"));
+    return JSON.parse(await readFile(KV_FILE, "utf8"));
   } catch {
     return {};
   }
 }
 
 async function writeStore(value) {
-  await mkdir(configDir, { recursive: true });
-  await writeFile(kvFile, JSON.stringify(value, null, 2), "utf8");
+  await mkdir(CONFIG_DIR, { recursive: true });
+  const temporary = `${KV_FILE}.${process.pid}.tmp`;
+  await writeFile(temporary, JSON.stringify(value, null, 2), "utf8");
+  await rename(temporary, KV_FILE);
 }

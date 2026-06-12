@@ -11,8 +11,9 @@ let liveRefreshTimer = null;
 let liveRefreshInFlight = false;
 let liveRefreshTicks = 0;
 let modelOptions = [];
-let selectedModel = readStoredJson("historyBrowser:model", null);
-let selectedTheme = localStorage.getItem("historyBrowser:theme") || "system";
+const storagePrefix = "historyBrowserNext:";
+let selectedModel = readStoredJson(`${storagePrefix}model`, null);
+let selectedTheme = localStorage.getItem(`${storagePrefix}theme`) || "system";
 let attachments = [];
 let permissions = [];
 let questions = [];
@@ -486,7 +487,7 @@ function renderModels() {
 function changeModel() {
   const value = $("modelSearch").dataset.value || "";
   selectedModel = value ? splitModelValue(value) : null;
-  localStorage.setItem("historyBrowser:model", JSON.stringify(selectedModel));
+  localStorage.setItem(`${storagePrefix}model`, JSON.stringify(selectedModel));
   renderModels();
 }
 
@@ -498,7 +499,7 @@ function searchModels() {
 function resetModel() {
   selectedModel = null;
   $("modelSearch").dataset.value = "";
-  localStorage.setItem("historyBrowser:model", JSON.stringify(selectedModel));
+  localStorage.setItem(`${storagePrefix}model`, JSON.stringify(selectedModel));
   renderModels();
 }
 
@@ -534,7 +535,7 @@ function renderModelMenu(open = false) {
     option.addEventListener("click", () => {
       search.dataset.value = option.dataset.modelValue;
       selectedModel = splitModelValue(option.dataset.modelValue);
-      localStorage.setItem("historyBrowser:model", JSON.stringify(selectedModel));
+      localStorage.setItem(`${storagePrefix}model`, JSON.stringify(selectedModel));
       renderModels();
       menu.classList.remove("visible");
     });
@@ -559,7 +560,7 @@ function applyTheme() {
 
 function changeTheme() {
   selectedTheme = $("themeSelect").value || "system";
-  localStorage.setItem("historyBrowser:theme", selectedTheme);
+  localStorage.setItem(`${storagePrefix}theme`, selectedTheme);
   applyTheme();
 }
 
@@ -707,7 +708,7 @@ async function openLogsDialog() {
     const data = await request("/api/logs");
     $("utilityBody").innerHTML = `
       <div class="log-toolbar">
-        <code title="${escapeHtml(data.path || "")}">${escapeHtml(data.path || "history-browser.log")}</code>
+        <code title="${escapeHtml(data.path || "")}">${escapeHtml(data.path || "history-browser-next.log")}</code>
         <div>
           <button id="openLogFile" class="small-button" type="button">Open file</button>
           <button id="clearLogFile" class="small-button" type="button">Clear</button>

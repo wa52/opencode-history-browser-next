@@ -1,45 +1,50 @@
-# OpenCode History Browser
+# OpenCode History Browser Next
 
 Browser UI for OpenCode sessions, installed as a global OpenCode TUI plugin.
+
+This is the independent `next` edition. Uninstall the legacy
+`github:wa52/opencode-history-browser` plugin before enabling this one because
+both editions can redirect the same global `opencode` command on Windows.
 
 ## Install
 
 Windows PowerShell or Command Prompt:
 
 ```powershell
-opencode.cmd plugin --global github:wa52/opencode-history-browser
+opencode.cmd plugin --global github:wa52/opencode-history-browser-next
 ```
 
 macOS, Linux, or a shell where `opencode` already works:
 
 ```sh
-opencode plugin --global github:wa52/opencode-history-browser
+opencode plugin --global github:wa52/opencode-history-browser-next
 ```
 
 Restart OpenCode once after installation. After that, running `opencode` with
 no arguments opens the browser directly without showing the TUI loading page.
 
-Use `opencode-cli` when you explicitly want the original OpenCode command-line
-interface. Commands with arguments, such as `opencode plugin ...` and
-`opencode --help`, continue to use the original OpenCode executable.
+Use the browser's `Open CLI` button when you explicitly want the original
+OpenCode command-line interface. Commands with arguments, such as
+`opencode plugin ...` and `opencode --help`, continue to use the original
+OpenCode executable.
 
 The browser's `Open CLI` button opens the selected session as an independent
 terminal client. Closing that terminal does not stop or reload the browser.
 
-On Windows, the plugin also creates `OpenCode Browser.vbs` on the desktop. Use
+On Windows, the plugin also creates `OpenCode Browser Next.vbs` on the desktop. Use
 that shortcut afterward to start the browser UI without keeping an OpenCode
 command window visible.
 
 If it does not open, run this in OpenCode:
 
 ```text
-/history-browser
+/history-browser-next
 ```
 
 To verify an install:
 
 ```text
-/history-browser-doctor
+/history-browser-next-doctor
 ```
 
 ## What You Get
@@ -61,8 +66,8 @@ To verify an install:
 - Support local drives, mapped drives, junctions, symlinks, and accessible UNC shares
 - Open files with the system default app and folders in Explorer
 - Browser commands: `/skills`, `/mcp`, `/logs`, and `/uninstall`
-- Persistent diagnostics at `~/.config/opencode/history-browser.log`
-- Install self-check with `/history-browser-doctor`
+- Persistent diagnostics at `~/.config/opencode/history-browser-next.log`
+- Install self-check with `/history-browser-next-doctor`
 
 Closing the browser also stops the hidden OpenCode host after a short grace
 period. Reloading the page does not stop it.
@@ -72,13 +77,13 @@ period. Reloading the page does not stop it.
 Windows:
 
 ```powershell
-opencode.cmd plugin --global --force github:wa52/opencode-history-browser
+opencode.cmd plugin --global --force github:wa52/opencode-history-browser-next
 ```
 
 macOS/Linux:
 
 ```sh
-opencode plugin --global --force github:wa52/opencode-history-browser
+opencode plugin --global --force github:wa52/opencode-history-browser-next
 ```
 
 Restart OpenCode after updating.
@@ -88,7 +93,7 @@ Restart OpenCode after updating.
 Run this inside OpenCode:
 
 ```text
-/history-browser-uninstall
+/history-browser-next-uninstall
 ```
 
 Or use Browser settings > Uninstall, or type `/uninstall` in the browser input.
@@ -103,13 +108,13 @@ Then fully restart OpenCode.
 
 ## Troubleshooting
 
-If `/history-browser` is missing after restart, run the update command above and restart OpenCode again.
+If `/history-browser-next` is missing after restart, run the update command above and restart OpenCode again.
 
 On Windows, use `opencode.cmd` instead of `opencode` if PowerShell blocks `opencode.ps1`.
 
-If the browser opens but history does not load, run `/history-browser-doctor` inside OpenCode.
+If the browser opens but history does not load, run `/history-browser-next-doctor` inside OpenCode.
 
 Open Browser settings > Logs, or type `/logs`, to inspect startup, CLI, request,
-and prompt errors. The log file is `~/.config/opencode/history-browser.log`.
+and prompt errors. The log file is `~/.config/opencode/history-browser-next.log`.
 
-The browser URL contains a temporary token. Reopen it with `/history-browser` instead of reusing an old URL.
+The browser URL contains a temporary token. Reopen it with `/history-browser-next` instead of reusing an old URL.

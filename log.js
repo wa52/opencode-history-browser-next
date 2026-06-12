@@ -1,20 +1,19 @@
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { appendFile, mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { CONFIG_DIR, LOG_FILE } from "./lib/identity.js";
 
-const logDir = join(homedir(), ".config", "opencode");
-const logFile = join(logDir, "history-browser.log");
+const maxLogBytes = 2 * 1024 * 1024;
 
 async function writeLog(level, event, details = {}) {
   try {
-    await mkdir(logDir, { recursive: true });
+    await mkdir(CONFIG_DIR, { recursive: true });
+    await rotateLogIfNeeded();
     const entry = {
       time: new Date().toISOString(),
       level,
       event,
       ...normalizeDetails(details),
     };
-    await appendFile(logFile, `${JSON.stringify(entry)}\n`, "utf8");
+    await appendFile(LOG_FILE, `${JSON.stringify(entry)}\n`, "utf8");
   } catch {}
 }
 
@@ -43,16 +42,28 @@ function normalizeDetails(details) {
 
 async function readLogs(limit = 400) {
   try {
-    const text = await readFile(logFile, "utf8");
+    const text = await readFile(LOG_FILE, "utf8");
     return text.split(/\r?\n/).filter(Boolean).slice(-limit).join("\n");
-  } catch {
+  } catch (error) {
+    if (error?.code === "ENOENT") await clearLogs();
     return "";
   }
 }
 
 async function clearLogs() {
-  await mkdir(logDir, { recursive: true });
-  await writeFile(logFile, "", "utf8");
+  await mkdir(CONFIG_DIR, { recursive: true });
+  await writeFile(LOG_FILE, "", "utf8");
 }
 
-export { clearLogs, logFile, readLogs, writeLog };
+async function rotateLogIfNeeded() {
+  try {
+    const details = await stat(LOG_FILE);
+    if (details.size < maxLogBytes) return;
+    await unlink(`${LOG_FILE}.1`).catch(() => {});
+    await rename(LOG_FILE, `${LOG_FILE}.1`);
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+}
+
+export { clearLogs, LOG_FILE as logFile, readLogs, writeLog };
