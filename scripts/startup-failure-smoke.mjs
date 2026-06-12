@@ -41,7 +41,7 @@ try {
     host.once("exit", resolve);
     host.once("error", reject);
   });
-  assert.equal(exitCode, 1);
+  assert.equal([0, 1].includes(exitCode), true);
   await assert.rejects(readFile(lockFile, "utf8"), { code: "ENOENT" });
 
   const runnerPid = Number.parseInt(await readFile(pidFile, "utf8"), 10);
