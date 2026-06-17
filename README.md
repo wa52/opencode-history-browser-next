@@ -30,6 +30,8 @@ OpenCode executable.
 
 The browser's `Open CLI` button opens the selected session as an independent
 terminal client. Closing that terminal does not stop or reload the browser.
+Browser replies always go through the OpenCode session API, so the browser does
+not depend on the visible TUI input box to continue a chat.
 
 On Windows, the plugin also creates `OpenCode Browser Next.vbs` on the desktop. Use
 that shortcut afterward to start the browser UI without keeping an OpenCode
@@ -61,6 +63,8 @@ To verify an install:
 - See reasoning stages, tool calls, tool results, and task progress
 - Paste or attach images
 - Search and select models
+- View richer Skill diagnostics with plugin and scope details
+- View richer MCP diagnostics with connection status, command, cwd, source, and tool count
 - Inline clickable paths in messages, Markdown, command output, and tool output
 - Resolve relative paths from the current session workspace
 - Support local drives, mapped drives, junctions, symlinks, and accessible UNC shares
@@ -68,6 +72,7 @@ To verify an install:
 - Browser commands: `/skills`, `/mcp`, `/logs`, and `/uninstall`
 - Persistent diagnostics at `~/.config/opencode/history-browser-next.log`
 - Install self-check with `/history-browser-next-doctor`
+- Uninstall restores the original `opencode` command without removing OpenCode itself
 
 Closing the browser also stops the hidden OpenCode host after a short grace
 period. Reloading the page does not stop it.
@@ -97,7 +102,9 @@ Run this inside OpenCode:
 ```
 
 Or use Browser settings > Uninstall, or type `/uninstall` in the browser input.
-Then fully restart OpenCode.
+Then fully restart OpenCode. Uninstall only removes this plugin, the browser
+launcher, and any redirect wrapper it installed; it does not remove or break
+the original OpenCode executable.
 
 ## Requirements
 

@@ -33,23 +33,23 @@ test("wraps Windows command shims through cmd", () => {
 test("builds a macOS terminal command that suppresses browser recursion", () => {
   const command = buildMacTerminalCommand(
     "/Applications/OpenCode's CLI/opencode",
-    ["attach", "http://127.0.0.1:4096"],
+    ["--dir", "/Users/feng/My Project", "--session", "ses_123"],
     "/Users/feng/My Project",
   );
 
   assert.equal(
     command,
-    "cd '/Users/feng/My Project' && OPENCODE_HISTORY_CLI=1 exec '/Applications/OpenCode'\\''s CLI/opencode' 'attach' 'http://127.0.0.1:4096'",
+    "cd '/Users/feng/My Project' && OPENCODE_HISTORY_CLI=1 exec '/Applications/OpenCode'\\''s CLI/opencode' '--dir' '/Users/feng/My Project' '--session' 'ses_123'",
   );
 });
 
 test("uses each Linux terminal emulator's supported execution flag", () => {
-  assert.deepEqual(linuxTerminalLaunch("gnome-terminal", "opencode", ["attach", "url"]), {
+  assert.deepEqual(linuxTerminalLaunch("gnome-terminal", "opencode", ["--session", "ses_123"]), {
     command: "gnome-terminal",
-    args: ["--", "opencode", "attach", "url"],
+    args: ["--", "opencode", "--session", "ses_123"],
   });
-  assert.deepEqual(linuxTerminalLaunch("/usr/bin/konsole", "opencode", ["attach", "url"]), {
+  assert.deepEqual(linuxTerminalLaunch("/usr/bin/konsole", "opencode", ["--session", "ses_123"]), {
     command: "/usr/bin/konsole",
-    args: ["-e", "opencode", "attach", "url"],
+    args: ["-e", "opencode", "--session", "ses_123"],
   });
 });

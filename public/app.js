@@ -257,7 +257,7 @@ async function openCurrent() {
 }
 
 async function openCli() {
-  setComposerStatus("Opening OpenCode terminal...");
+  setComposerStatus("Opening OpenCode CLI...");
   try {
     await request("/api/open-terminal", {
       method: "POST",
@@ -603,7 +603,7 @@ async function sendPrompt(event) {
     });
     attachments = [];
     renderAttachments();
-    setComposerStatus(result.method === "tui" ? "Submitted to OpenCode" : "Submitted");
+    setComposerStatus("Submitted");
     await loadSessions();
     await selectSession(sessionID);
     watchPrompt(sessionID, beforeSignature);
@@ -675,8 +675,12 @@ async function openSkillsDialog() {
     const skills = Array.isArray(data.skills) ? data.skills : [];
     $("utilityBody").innerHTML = skills.length ? skills.map((skill) => `
       <article class="utility-item">
-        <strong>${escapeHtml(skill.name)}</strong>
+        <div class="utility-row">
+          <strong>${escapeHtml(skill.name)}</strong>
+          <span class="status-pill">${escapeHtml(skill.scope || "unknown")}</span>
+        </div>
         <p>${escapeHtml(skill.description || "No description")}</p>
+        <small>Plugin: ${escapeHtml(skill.plugin || "builtin")}</small>
         <small>${escapeHtml(skill.location || "")}</small>
       </article>
     `).join("") : '<div class="utility-empty">No skills found.</div>';
@@ -691,9 +695,15 @@ async function openMcpDialog() {
     const data = await request("/api/mcp");
     const servers = Array.isArray(data.servers) ? data.servers : [];
     $("utilityBody").innerHTML = servers.length ? servers.map((server) => `
-      <article class="utility-item utility-row">
-        <strong>${escapeHtml(server.name)}</strong>
-        <span class="status-pill ${escapeHtml(server.status || "")}">${escapeHtml(server.status || "unknown")}</span>
+      <article class="utility-item">
+        <div class="utility-row">
+          <strong>${escapeHtml(server.name)}</strong>
+          <span class="status-pill ${escapeHtml(server.status || "")}">${escapeHtml(server.status || "unknown")}</span>
+        </div>
+        <p>${escapeHtml(server.connected ? "Connected" : "Not connected")} · ${escapeHtml(String(server.tools || 0))} tools${server.transport ? ` · ${escapeHtml(server.transport)}` : ""}</p>
+        ${server.command ? `<small>Command: ${escapeHtml(server.command)}</small>` : ""}
+        ${server.cwd ? `<small>Folder: ${escapeHtml(server.cwd)}</small>` : ""}
+        ${server.source ? `<small>Source: ${escapeHtml(server.source)}</small>` : ""}
         ${server.error ? `<small>${escapeHtml(server.error)}</small>` : ""}
       </article>
     `).join("") : '<div class="utility-empty">No MCP servers configured.</div>';
@@ -727,7 +737,7 @@ async function openLogsDialog() {
 }
 
 async function uninstallPlugin() {
-  const confirmed = confirm("Uninstall History Browser and restore the original OpenCode command?\n\nOpenCode must be restarted afterward.");
+  const confirmed = confirm("Uninstall History Browser?\n\nThis only removes the plugin and restores the original opencode command. OpenCode itself will keep working after restart.");
   if (!confirmed) return;
   setComposerStatus("Uninstalling History Browser...");
   try {
@@ -735,6 +745,7 @@ async function uninstallPlugin() {
     openUtilityDialog("History Browser uninstalled", `
       <div class="utility-empty">
         <p>${escapeHtml(data.message || "Plugin removed.")}</p>
+        <small>${data.redirectRestored ? "Original opencode command restored." : "No command redirect needed to be restored."}</small>
         <small>${escapeHtml((data.removed || []).join("\n"))}</small>
       </div>
     `);
@@ -771,6 +782,7 @@ function watchPrompt(sessionID, beforeSignature) {
   let lastSignature = beforeSignature;
   let stableTicks = 0;
   let sawAssistant = false;
+  let failureCount = 0;
   promptWatcher = window.setInterval(async () => {
     if (current?.id !== sessionID) return clearPromptWatcher();
     if (Date.now() - startedAt > promptMaxWaitMs) {
@@ -779,6 +791,7 @@ function watchPrompt(sessionID, beforeSignature) {
     }
     try {
       await refreshCurrentSession({ force: true, refreshList: true });
+      failureCount = 0;
       const signature = messageSignature(current);
       const finalAssistant = completedAssistantMessage(current, startedAt);
       if (hasNewAssistantMessage(current, startedAt) || (signature !== beforeSignature && lastRole(current) !== "user")) {
@@ -791,8 +804,12 @@ function watchPrompt(sessionID, beforeSignature) {
         setComposerStatus("");
         clearPromptWatcher();
       }
-    } catch {
-      clearPromptWatcher();
+    } catch (error) {
+      failureCount += 1;
+      if (failureCount >= 8) {
+        setComposerStatus(error.message || "Browser sync was interrupted. OpenCode may still be running.");
+        clearPromptWatcher();
+      }
     }
   }, promptPollMs);
 }

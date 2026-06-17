@@ -23,10 +23,27 @@ try {
   assert.equal(await page.locator("#promptInput").isVisible(), true);
 
   await page.locator(".settings-card > summary").click();
+  await page.locator("#modelSearch").fill("deepseek");
+  await page.waitForSelector(".model-menu.visible");
+  assert.equal(await page.locator(".model-menu").isVisible(), true);
+  await page.locator("#modelReset").click();
   await page.locator("#viewLogs").click();
   await page.waitForSelector("#utilityDialog[open]");
   assert.match((await page.locator("#utilityTitle").textContent()) || "", /logs/i);
   assert.match((await page.locator(".log-toolbar code").textContent()) || "", /history-browser-next\.log/i);
+  await page.locator("#utilityClose").click();
+
+  await page.locator("#promptInput").fill("/skills");
+  await page.locator("#promptInput").press("Enter");
+  await page.waitForSelector("#utilityDialog[open]");
+  assert.match((await page.locator("#utilityTitle").textContent()) || "", /skills/i);
+  await page.locator("#utilityClose").click();
+
+  await page.locator("#promptInput").fill("/mcp");
+  await page.locator("#promptInput").press("Enter");
+  await page.waitForSelector("#utilityDialog[open]");
+  assert.match((await page.locator("#utilityTitle").textContent()) || "", /mcp/i);
+  await page.locator("#utilityClose").click();
 
   const screenshot = join(tmpdir(), "opencode-history-browser-next-smoke.png");
   await page.screenshot({ path: screenshot, fullPage: true });

@@ -238,13 +238,19 @@ async function handleRequest(api, request, response) {
   if (request.method === "GET" && url.pathname === "/api/skills") {
     const skills = await assertOk(api.client.app.skills({}));
     return sendJson(response, {
-      skills: (Array.isArray(skills) ? skills : []).map(({ name, description, location }) => ({ name, description, location })),
+      skills: (Array.isArray(skills) ? skills : []).map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+        location: skill.location,
+        plugin: inferPluginName(skill),
+        scope: inferSkillScope(skill),
+      })),
     });
   }
 
   if (request.method === "GET" && url.pathname === "/api/mcp") {
     const status = await assertOk(api.client.mcp.status({}));
-    return sendJson(response, { servers: Object.entries(status || {}).map(([name, value]) => ({ name, ...value })) });
+    return sendJson(response, { servers: Object.entries(status || {}).map(([name, value]) => normalizeMcpServer(name, value)) });
   }
 
   if (request.method === "GET" && url.pathname === "/api/logs") {
@@ -281,7 +287,6 @@ async function handleRequest(api, request, response) {
       await openOpenCodeTerminal({
         directory,
         sessionID,
-        serverUrl: api.opencodeUrl,
         preferredCommand: api.opencodeCommand,
       });
     } catch (error) {
@@ -864,14 +869,6 @@ function compact(text) {
 }
 
 async function promptSession(api, { sessionID, text, model, files = [] }) {
-  if (!api.headless && !model && !files.length && api.client.tui?.appendPrompt && api.client.tui?.submitPrompt) {
-    await assertOk(api.client.tui.selectSession({ sessionID }));
-    if (api.client.tui.clearPrompt) await assertOk(api.client.tui.clearPrompt({}));
-    await assertOk(api.client.tui.appendPrompt({ text }));
-    await assertOk(api.client.tui.submitPrompt({}));
-    return { method: "tui" };
-  }
-
   const payload = {
     sessionID,
     parts: [
@@ -1086,10 +1083,25 @@ function splitModelID(value) {
 function buildBalancedSnapshot(session) {
   const messages = Array.isArray(session.messages) ? session.messages : [];
   const facts = importantLines(messages);
-  const recent = messages.slice(-10).map((message) => {
+  const recent = messages.slice(-8).map((message) => {
     const speaker = message.role === "user" ? "User" : "Assistant";
-    return `- ${speaker}: ${clip(message.text || message.extras?.join(", ") || "", 650)}`;
+    return `- ${speaker}: ${clip(message.text || message.extras?.join(", ") || "", 280)}`;
   }).filter((line) => line.trim().length > 10);
+  const decisions = extractKeywordLines(messages, [
+    /\b(?:decision|decided|choose|chosen|resolved|plan|next step|constraint)\b[^\n]*/gi,
+    /(?:决定|已改为|改成|采用|方案|约束|下一步)[^\n。]{0,140}/g,
+  ], 10);
+  const errors = extractKeywordLines(messages, [
+    /\b(?:error|failed|failure|exception|abort|aborted|timeout|denied|warning)\b[^\n]*/gi,
+    /(?:错误|失败|异常|中断|超时|拒绝|警告)[^\n。]{0,140}/g,
+  ], 10);
+  const commands = extractKeywordLines(messages, [
+    /`([^`]{2,200})`/g,
+    /\b(?:opencode|npm|node|git|powershell|cmd(?:\.exe)?)\b[^\n]*/gi,
+  ], 12);
+  const todos = (Array.isArray(session.todos) ? session.todos : [])
+    .filter((todo) => todo.status !== "completed")
+    .map((todo) => clip(todo.content, 180));
 
   return [
     "# Context Snapshot",
@@ -1108,8 +1120,20 @@ function buildBalancedSnapshot(session) {
     "## Current State",
     ...currentState(messages),
     "",
+    "## Decisions And Constraints",
+    ...(decisions.length ? decisions.map((line) => `- ${line}`) : ["- No explicit decision trail was detected automatically."]),
+    "",
+    "## Errors And Risks",
+    ...(errors.length ? errors.map((line) => `- ${line}`) : ["- No active errors were detected automatically."]),
+    "",
     "## Important Details",
     ...(facts.length ? facts.map((line) => `- ${line}`) : ["- No high-signal paths, commands, errors, or decisions were detected automatically."]),
+    "",
+    "## Commands And References",
+    ...(commands.length ? commands.map((line) => `- ${line}`) : ["- No command or code reference snippets were detected automatically."]),
+    "",
+    "## Open Work",
+    ...(todos.length ? todos.map((line) => `- ${line}`) : ["- No unfinished todo items were reported by OpenCode."]),
     "",
     "## Recent Context",
     ...(recent.length ? recent : ["- No recent message text was available."]),
@@ -1161,9 +1185,64 @@ function importantLines(messages) {
   return output;
 }
 
+function extractKeywordLines(messages, patterns, limit) {
+  const seen = new Set();
+  const output = [];
+  for (const message of messages) {
+    const text = String(message.text || "");
+    for (const pattern of patterns) {
+      for (const match of text.matchAll(pattern)) {
+        const raw = match[1] || match[0];
+        const value = clip(String(raw).replace(/\s+/g, " ").trim(), 220);
+        const key = value.toLowerCase();
+        if (value.length < 3 || seen.has(key)) continue;
+        seen.add(key);
+        output.push(value);
+        if (output.length >= limit) return output;
+      }
+    }
+  }
+  return output;
+}
+
 function clip(text, max) {
   const value = String(text).replace(/\s+/g, " ").trim();
   return value.length > max ? `${value.slice(0, max - 3)}...` : value;
+}
+
+function inferPluginName(skill) {
+  const location = String(skill?.location || "");
+  const cached = location.match(/plugins[\\/](?:cache|bundled)[\\/]+([^\\/]+)/i);
+  if (cached?.[1]) return cached[1];
+  const name = String(skill?.name || "");
+  return name.includes(":") ? name.split(":")[0] : "builtin";
+}
+
+function inferSkillScope(skill) {
+  const name = String(skill?.name || "");
+  if (name.includes(":")) return "plugin";
+  if (/[\\/]\.system[\\/]/.test(String(skill?.location || ""))) return "system";
+  return "workspace";
+}
+
+function normalizeMcpServer(name, value) {
+  const server = value && typeof value === "object" ? value : {};
+  const tools = Array.isArray(server.tools)
+    ? server.tools
+    : Array.isArray(server.capabilities?.tools)
+      ? server.capabilities.tools
+      : [];
+  return {
+    name,
+    status: server.status || (server.connected ? "connected" : "unknown"),
+    connected: Boolean(server.connected ?? (server.status === "connected")),
+    tools: tools.length,
+    command: Array.isArray(server.command) ? server.command.join(" ") : (server.command || ""),
+    cwd: server.cwd || server.workingDirectory || "",
+    error: server.error || "",
+    transport: server.transport || "",
+    source: server.source || server.origin || "",
+  };
 }
 
 function errorMessage(error) {
@@ -1307,9 +1386,10 @@ async function ensureCommandRedirect() {
 }
 
 async function restoreCommandRedirect() {
-  if (process.platform !== "win32") return;
+  if (process.platform !== "win32") return false;
   const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming");
   const npmDir = join(appData, "npm");
+  let restored = false;
   for (const extension of [".cmd", ".ps1"]) {
     const command = join(npmDir, `opencode${extension}`);
     const original = join(npmDir, `${REDIRECT_BACKUP_BASENAME}${extension}`);
@@ -1318,7 +1398,9 @@ async function restoreCommandRedirect() {
     if (!ownsRedirect(current, REDIRECT_MARKER)) continue;
     await writeFile(command, await readFile(original, "utf8"), "utf8");
     await unlink(original).catch(() => {});
+    restored = true;
   }
+  return restored;
 }
 
 function openUrl(url) {
@@ -1333,22 +1415,15 @@ function openUrl(url) {
   spawn("xdg-open", [url], { detached: true, stdio: "ignore" }).unref();
 }
 
-async function openOpenCodeTerminal({ directory, sessionID, serverUrl, preferredCommand }) {
-  const args = serverUrl
-    ? ["attach", serverUrl, "--dir", directory, ...(sessionID ? ["--session", sessionID] : [])]
-    : (sessionID ? ["--session", sessionID] : []);
+async function openOpenCodeTerminal({ directory, sessionID, preferredCommand }) {
+  const args = ["--dir", directory, ...(sessionID ? ["--session", sessionID] : [])];
   if (process.platform === "win32") {
     const command = await resolveOpenCodeCommand(preferredCommand);
     const cwd = existsSync(directory) ? directory : homedir();
     const env = { ...process.env, OPENCODE_HISTORY_CLI: "1" };
     const launch = commandLaunch(command, args, "keep");
-    const terminalCommand = [launch.command, ...launch.args];
-    await writeLog("info", "cli.open", { command, args, cwd, terminal: await commandExists("wt.exe") ? "wt.exe" : terminalCommand[0] });
-    if (await commandExists("wt.exe")) {
-      await spawnVisible("wt.exe", ["-w", "new", "-d", cwd, ...terminalCommand], { cwd, env });
-    } else {
-      await spawnVisible(terminalCommand[0], terminalCommand.slice(1), { cwd, env });
-    }
+    await writeLog("info", "cli.open", { command, args, cwd, terminal: launch.command });
+    await spawnVisible(launch.command, launch.args, { cwd, env });
     return;
   }
   const command = await resolveOpenCodeCommand(preferredCommand);
@@ -1403,13 +1478,13 @@ function spawnVisible(command, args, options) {
 }
 
 async function uninstallSelf(api) {
-  const { removed } = await uninstallPlugin();
+  const { removed, redirectRestored } = await uninstallPlugin();
 
-  if (!removed.length) {
+  if (!removed.length && !redirectRestored) {
     api.ui.toast({
       variant: "warning",
       title: "History Browser",
-      message: "Plugin entry was not found. Check your OpenCode tui.json.",
+      message: "Plugin entry was not found. OpenCode itself was not changed.",
       duration: 6000,
     });
     return;
@@ -1418,13 +1493,13 @@ async function uninstallSelf(api) {
   api.ui.toast({
     variant: "success",
     title: "History Browser uninstalled",
-    message: "Restart OpenCode to finish removing it.",
+    message: "Restart OpenCode to finish removing it. The original opencode command stays available.",
     duration: 8000,
   });
 }
 
 async function uninstallPlugin() {
-  await restoreCommandRedirect();
+  const redirectRestored = await restoreCommandRedirect();
   const removed = [];
   for (const file of tuiConfigCandidates()) {
     if (await removePluginFromConfig(file)) removed.push(file);
@@ -1436,9 +1511,10 @@ async function uninstallPlugin() {
   }
   return {
     removed,
-    message: removed.length
-      ? "Plugin removed. Close this page and restart OpenCode."
-      : "Plugin entry was not found. The command redirect was still restored.",
+    redirectRestored,
+    message: removed.length || redirectRestored
+      ? "Plugin removed. Restart OpenCode and the original opencode command will keep working."
+      : "Plugin entry was not found. OpenCode itself was not modified.",
   };
 }
 
@@ -1487,5 +1563,13 @@ async function startBrowserHost(api) {
   return { url, close: closeServer };
 }
 
-export { ensureBrowserLauncher, ensureCommandRedirect, startBrowserHost };
+export {
+  buildBalancedSnapshot,
+  ensureBrowserLauncher,
+  ensureCommandRedirect,
+  inferPluginName,
+  inferSkillScope,
+  normalizeMcpServer,
+  startBrowserHost,
+};
 export default { id, tui };
