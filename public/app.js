@@ -1,5 +1,6 @@
 import { createBrowserDialogs } from "./browser-dialogs.js";
 import { createPromptController } from "./browser-prompt.js";
+import { isSnapshotMessage, renderSnapshotMessage } from "./browser-snapshot-view.js";
 import {
   bindPathActions,
   cleanMessageText,
@@ -71,7 +72,7 @@ function renderSessions() {
       if (selectMode) toggleSelected(session.id);
       else selectSession(session.id);
     };
-    const preview = session.preview?.[0]?.text || session.directory || "";
+    const preview = session.preview?.[0]?.text || session.workspaceRoot || session.directory || "";
     const checkbox = selectMode ? `<input class="session-check" type="checkbox" ${selectedIds.has(session.id) ? "checked" : ""} aria-label="Select chat" />` : "";
     item.innerHTML = `
       ${checkbox}
@@ -130,7 +131,7 @@ function renderCurrent() {
   }
 
   $("sidePin").textContent = current.pinned ? "Unpin" : "Pin";
-  $("meta").textContent = `${fmtTime(current.updated)} | ${shortPath(current.directory)}`;
+  $("meta").textContent = `${fmtTime(current.updated)} | ${shortPath(current.workspaceRoot || current.directory)}`;
   $("detailStatus").textContent = current.pinned ? "Pinned history" : "History";
   $("detailUpdated").textContent = fmtTime(current.updated);
   $("detailModel").textContent = current.model || current.agent || "-";
@@ -142,11 +143,12 @@ function renderCurrent() {
     const node = document.createElement("article");
     const text = cleanMessageText(message.text || "");
     const metadataOnly = !text && message.extras.length;
-    node.className = `message ${message.role}${metadataOnly ? " metadata-only" : ""}`;
+    const snapshotMode = isSnapshotMessage(message, current);
+    node.className = `message ${message.role}${metadataOnly ? " metadata-only" : ""}${snapshotMode ? " snapshot-message" : ""}`;
     node.innerHTML = `
       <div class="role">${message.role === "user" ? "You" : "OpenCode"}</div>
       <div class="bubble">
-        <div class="content">${text ? renderPathText(text, message.paths || []) : ""}</div>
+        <div class="content">${snapshotMode ? renderSnapshotMessage(message) : (text ? renderPathText(text, message.paths || []) : "")}</div>
         ${renderActivities(message.activities || [])}
         ${message.error ? `<div class="status-bar error-text">${escapeHtml(message.error)}</div>` : ""}
       </div>
@@ -320,7 +322,11 @@ async function createSnapshot() {
 }
 
 async function openNew() {
-  const data = await request("/api/open-new", { method: "POST" });
+  const directory = current?.workspaceRoot || current?.directory || "";
+  const data = await request("/api/open-new", {
+    method: "POST",
+    body: JSON.stringify({ directory }),
+  });
   if (data.sessionID) {
     await loadSessions();
     await selectSession(data.sessionID);

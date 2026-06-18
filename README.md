@@ -35,6 +35,13 @@ not depend on the visible TUI input box to continue a chat.
 The frontend is now split into small browser modules so the main page entry is
 easier to maintain: `public/app.js`, `public/browser-dialogs.js`,
 `public/browser-prompt.js`, and `public/browser-utils.js`.
+The server side is also split by function now: path handling lives in
+`lib/local-paths.js`, while session/model/prompt shaping lives in
+`lib/opencode-session.js`. A short module map is in
+[`docs/module-layout.md`](docs/module-layout.md).
+Browser-created chats and snapshot chats now carry an explicit workspace-root
+binding so they keep the selected session directory instead of falling back to
+the host process working directory whenever possible.
 
 On Windows, the plugin also creates `OpenCode Browser Next.vbs` on the desktop. Use
 that shortcut afterward to start the browser UI without keeping an OpenCode
@@ -61,7 +68,7 @@ To verify an install:
 - Stop an active reply with Stop or Esc
 - Pin, rename, delete, and multi-delete chats
 - Search all sessions
-- Create a Balanced context snapshot
+- Create a Balanced mixed snapshot with recent messages, structured memory, and source indexes
 - Reply to OpenCode questions, choices, and permission requests
 - See reasoning stages, tool calls, tool results, and task progress
 - Paste or attach images

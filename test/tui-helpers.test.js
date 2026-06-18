@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { buildBalancedSnapshot } from "../lib/browser-snapshot.js";
 import { inferPluginName, inferSkillScope, normalizeMcpServer } from "../lib/browser-diagnostics.js";
+import { normalizeModelObject } from "../lib/opencode-session.js";
 
 test("infers plugin metadata for bundled and system skills", () => {
   assert.equal(
@@ -58,12 +59,28 @@ test("builds a balanced snapshot with decisions, errors, commands, and open work
     ],
   });
 
+  assert.match(text, /## Compression Policy/);
   assert.match(text, /## Decisions And Constraints/);
-  assert.match(text, /promptAsync/);
+  assert.match(text, /\[M2\].*promptAsync/);
   assert.match(text, /## Errors And Risks/);
   assert.match(text, /MessageAbortedError/);
+  assert.match(text, /## Artifacts And Paths/);
   assert.match(text, /## Commands And References/);
   assert.match(text, /opencode\.cmd plugin --global --force/);
   assert.match(text, /## Open Work/);
   assert.match(text, /Push the final fixes to GitHub/);
+  assert.match(text, /## Recent Messages/);
+  assert.match(text, /## Source Index/);
+  assert.match(text, /\[M1\] User:/);
+});
+
+test("normalizes prompt model identifiers for route handlers", () => {
+  assert.deepEqual(
+    normalizeModelObject("opencode/deepseek-v4-flash-free"),
+    { providerID: "opencode", modelID: "deepseek-v4-flash-free" },
+  );
+  assert.deepEqual(
+    normalizeModelObject({ providerId: "openrouter", model: "gpt-4.1-mini" }),
+    { providerID: "openrouter", modelID: "gpt-4.1-mini" },
+  );
 });
