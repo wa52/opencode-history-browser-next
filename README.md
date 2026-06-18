@@ -32,6 +32,9 @@ The browser's `Open CLI` button opens the selected session as an independent
 terminal client. Closing that terminal does not stop or reload the browser.
 Browser replies always go through the OpenCode session API, so the browser does
 not depend on the visible TUI input box to continue a chat.
+The frontend is now split into small browser modules so the main page entry is
+easier to maintain: `public/app.js`, `public/browser-dialogs.js`,
+`public/browser-prompt.js`, and `public/browser-utils.js`.
 
 On Windows, the plugin also creates `OpenCode Browser Next.vbs` on the desktop. Use
 that shortcut afterward to start the browser UI without keeping an OpenCode
@@ -73,6 +76,7 @@ To verify an install:
 - Persistent diagnostics at `~/.config/opencode/history-browser-next.log`
 - Install self-check with `/history-browser-next-doctor`
 - Uninstall restores the original `opencode` command without removing OpenCode itself
+- Split browser-side dialogs, prompt watcher, and utility rendering into dedicated modules
 
 Closing the browser also stops the hidden OpenCode host after a short grace
 period. Reloading the page does not stop it.

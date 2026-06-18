@@ -11,6 +11,8 @@ opencode-history-browser/
 ├─ log.js
 ├─ install-redirect.js
 ├─ lib/
+│  ├─ browser-diagnostics.js
+│  ├─ browser-snapshot.js
 │  ├─ cleanup.js
 │  ├─ identity.js
 │  ├─ opencode-cli.js
@@ -20,6 +22,9 @@ opencode-history-browser/
 │  └─ write-queue.js
 ├─ public/
 │  ├─ app.js
+│  ├─ browser-dialogs.js
+│  ├─ browser-prompt.js
+│  ├─ browser-utils.js
 │  ├─ index.html
 │  └─ styles.css
 ├─ scripts/
@@ -44,6 +49,8 @@ opencode-history-browser/
 
 ### 公共能力
 
+- [`lib/browser-diagnostics.js`](../lib/browser-diagnostics.js) - skills / MCP 展示所需的诊断归一化逻辑。
+- [`lib/browser-snapshot.js`](../lib/browser-snapshot.js) - Balanced 上下文快照构建逻辑。
 - [`lib/identity.js`](../lib/identity.js) - 统一插件身份、路径、锁文件、日志文件和重定向常量。
 - [`lib/opencode-cli.js`](../lib/opencode-cli.js) - OpenCode 命令定位与跨平台启动封装。
 - [`lib/process-tree.js`](../lib/process-tree.js) - 进程树停止逻辑，包含 Windows `taskkill` 和 POSIX 进程组清理。
@@ -55,7 +62,10 @@ opencode-history-browser/
 ### 前端
 
 - [`public/index.html`](../public/index.html) - 浏览器主界面骨架。
-- [`public/app.js`](../public/app.js) - 前端状态、会话列表、消息流、权限/问题处理、设置等逻辑。
+- [`public/app.js`](../public/app.js) - 前端主状态、会话列表和页面级装配。
+- [`public/browser-dialogs.js`](../public/browser-dialogs.js) - `/skills`、`/mcp`、`/logs`、`/uninstall` 对话框逻辑。
+- [`public/browser-prompt.js`](../public/browser-prompt.js) - 浏览器端 prompt 轮询与完成判定。
+- [`public/browser-utils.js`](../public/browser-utils.js) - 文本渲染、路径点击、图片读取、存储等浏览器辅助函数。
 - [`public/styles.css`](../public/styles.css) - 整体视觉样式。
 
 ### 脚本与测试
@@ -118,6 +128,8 @@ opencode-history-browser/
 
 - `standalone.js`：隐藏启动 OpenCode host，写锁文件，退出时清理进程树和锁
 - `tui.js`：注册浏览器命令、安装/恢复 Windows redirect、启动本地 Web 界面
+- `lib/browser-diagnostics.js`：skills / MCP 诊断数据归一化
+- `lib/browser-snapshot.js`：Balanced 快照拼装
 - `lib/cleanup.js`：并发调用共用同一条清理链
 - `lib/identity.js`：统一插件身份、文件名、路径和常量
 - `lib/opencode-cli.js`：解析 OpenCode 命令、兼容 Windows/macOS/Linux
@@ -125,7 +137,10 @@ opencode-history-browser/
 - `lib/redirect.js`：识别 next/legacy redirect 归属，避免误覆盖
 - `lib/static-files.js`：限制静态资源只能从 `public/` 读
 - `lib/write-queue.js`：KV 按顺序落盘，失败后可继续写
-- `public/app.js`：前端主交互逻辑
+- `public/app.js`：前端主交互逻辑与模块装配
+- `public/browser-dialogs.js`：浏览器命令与 utility dialog
+- `public/browser-prompt.js`：浏览器 prompt watcher
+- `public/browser-utils.js`：前端共享工具
 - `public/index.html`：前端结构
 - `public/styles.css`：前端样式
 - `scripts/browser-smoke.mjs`：一键浏览器烟测
@@ -134,5 +149,5 @@ opencode-history-browser/
 
 ## 结论
 
-这个版本的结构已经拆成了清晰的入口层、共享能力层、前端层和测试层，适合继续维护。
-当前最值得盯住的是 Windows 重定向恢复和跨平台 CLI 启动兼容性，它们是安装/卸载最容易出问题的地方。
+这个版本现在把快照构建、诊断归一化、浏览器 utility dialog、prompt watcher、前端渲染工具都拆成了独立模块，主文件的职责更聚焦了。
+当前最值得继续盯住的是 Windows 重定向恢复和跨平台 CLI 启动兼容性，它们仍然是安装/卸载最容易出问题的地方。

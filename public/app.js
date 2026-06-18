@@ -1,3 +1,15 @@
+import { createBrowserDialogs } from "./browser-dialogs.js";
+import { createPromptController } from "./browser-prompt.js";
+import {
+  bindPathActions,
+  cleanMessageText,
+  escapeHtml,
+  imageFilesFromClipboard,
+  readFileAsDataUrl,
+  readStoredJson,
+  renderPathText,
+} from "./browser-utils.js";
+
 const $ = (id) => document.getElementById(id);
 
 let sessions = [];
@@ -5,8 +17,6 @@ let current = null;
 let renameMode = false;
 let selectMode = false;
 let sending = false;
-let promptWatcher = null;
-let activePromptSessionID = null;
 let liveRefreshTimer = null;
 let liveRefreshInFlight = false;
 let liveRefreshTicks = 0;
@@ -18,12 +28,6 @@ let attachments = [];
 let permissions = [];
 let questions = [];
 const selectedIds = new Set();
-const browserCommands = [
-  { command: "/skills", label: "View installed skills" },
-  { command: "/mcp", label: "View MCP status" },
-  { command: "/logs", label: "View browser error logs" },
-  { command: "/uninstall", label: "Uninstall this plugin" },
-];
 const apiToken = new URLSearchParams(window.location.search).get("token") || "";
 const promptPollMs = 1500;
 const promptMaxWaitMs = 10 * 60 * 1000;
@@ -147,7 +151,7 @@ function renderCurrent() {
         ${message.error ? `<div class="status-bar error-text">${escapeHtml(message.error)}</div>` : ""}
       </div>
     `;
-    bindPathActions(node);
+    bindPathActions(node, { request, setComposerStatus });
     $("messages").appendChild(node);
   }
   $("messages").scrollTop = $("messages").scrollHeight;
@@ -569,8 +573,8 @@ async function sendPrompt(event) {
   if (sending) return;
   const text = $("promptInput").value.trim();
   const files = attachments.map(({ filename, mime, url }) => ({ filename, mime, url }));
-  if (promptWatcher) {
-    if (!text && !files.length) await abortPrompt(activePromptSessionID);
+  if (promptController.isWatching()) {
+    if (!text && !files.length) await abortPrompt(promptController.getActivePromptSessionID());
     else setComposerStatus("OpenCode is still responding. Wait for it to finish or press Stop with an empty input.");
     return;
   }
@@ -580,7 +584,7 @@ async function sendPrompt(event) {
     return;
   }
   const optimisticSessionID = current?.id;
-  const beforeSignature = messageSignature(current);
+  const beforeSignature = promptController.messageSignature(current);
   sending = true;
   $("sendBtn").disabled = true;
   $("sendBtn").textContent = "Sending";
@@ -606,152 +610,14 @@ async function sendPrompt(event) {
     setComposerStatus("Submitted");
     await loadSessions();
     await selectSession(sessionID);
-    watchPrompt(sessionID, beforeSignature);
+    promptController.watchPrompt(sessionID, beforeSignature);
   } catch (error) {
     setComposerStatus(error.message);
   } finally {
     sending = false;
     $("sendBtn").disabled = false;
-    $("sendBtn").textContent = promptWatcher ? "Stop" : "Send";
+    $("sendBtn").textContent = promptController.isWatching() ? "Stop" : "Send";
     resizePrompt();
-  }
-}
-
-async function runBrowserCommand(value) {
-  const [command] = value.trim().split(/\s+/, 1);
-  $("commandMenu").classList.remove("visible");
-  if (command === "/skills") {
-    await openSkillsDialog();
-  } else if (command === "/mcp") {
-    await openMcpDialog();
-  } else if (command === "/logs") {
-    await openLogsDialog();
-  } else if (command === "/uninstall") {
-    await uninstallPlugin();
-  } else {
-    setComposerStatus("Available commands: /skills, /mcp, /logs, /uninstall");
-    return;
-  }
-  $("promptInput").value = "";
-  resizePrompt();
-  setComposerStatus("");
-}
-
-function renderCommandMenu() {
-  resizePrompt();
-  const input = $("promptInput").value.trim();
-  const menu = $("commandMenu");
-  if (!input.startsWith("/") || input.includes(" ")) {
-    menu.classList.remove("visible");
-    menu.innerHTML = "";
-    return;
-  }
-  const matches = browserCommands.filter((item) => item.command.startsWith(input.toLowerCase()));
-  menu.classList.toggle("visible", matches.length > 0);
-  menu.innerHTML = matches.map((item) => `
-    <button class="command-option" type="button" data-browser-command="${item.command}">
-      <code>${item.command}</code>
-      <span>${item.label}</span>
-    </button>
-  `).join("");
-  for (const option of menu.querySelectorAll("[data-browser-command]")) {
-    option.addEventListener("click", () => {
-      $("promptInput").value = option.dataset.browserCommand;
-      runBrowserCommand(option.dataset.browserCommand);
-    });
-  }
-}
-
-function openUtilityDialog(title, content) {
-  $("utilityTitle").textContent = title;
-  $("utilityBody").innerHTML = content;
-  $("utilityDialog").showModal();
-}
-
-async function openSkillsDialog() {
-  openUtilityDialog("Skills", '<div class="utility-loading">Loading skills...</div>');
-  try {
-    const data = await request("/api/skills");
-    const skills = Array.isArray(data.skills) ? data.skills : [];
-    $("utilityBody").innerHTML = skills.length ? skills.map((skill) => `
-      <article class="utility-item">
-        <div class="utility-row">
-          <strong>${escapeHtml(skill.name)}</strong>
-          <span class="status-pill">${escapeHtml(skill.scope || "unknown")}</span>
-        </div>
-        <p>${escapeHtml(skill.description || "No description")}</p>
-        <small>Plugin: ${escapeHtml(skill.plugin || "builtin")}</small>
-        <small>${escapeHtml(skill.location || "")}</small>
-      </article>
-    `).join("") : '<div class="utility-empty">No skills found.</div>';
-  } catch (error) {
-    $("utilityBody").innerHTML = `<div class="utility-empty">${escapeHtml(error.message)}</div>`;
-  }
-}
-
-async function openMcpDialog() {
-  openUtilityDialog("MCP", '<div class="utility-loading">Loading MCP status...</div>');
-  try {
-    const data = await request("/api/mcp");
-    const servers = Array.isArray(data.servers) ? data.servers : [];
-    $("utilityBody").innerHTML = servers.length ? servers.map((server) => `
-      <article class="utility-item">
-        <div class="utility-row">
-          <strong>${escapeHtml(server.name)}</strong>
-          <span class="status-pill ${escapeHtml(server.status || "")}">${escapeHtml(server.status || "unknown")}</span>
-        </div>
-        <p>${escapeHtml(server.connected ? "Connected" : "Not connected")} · ${escapeHtml(String(server.tools || 0))} tools${server.transport ? ` · ${escapeHtml(server.transport)}` : ""}</p>
-        ${server.command ? `<small>Command: ${escapeHtml(server.command)}</small>` : ""}
-        ${server.cwd ? `<small>Folder: ${escapeHtml(server.cwd)}</small>` : ""}
-        ${server.source ? `<small>Source: ${escapeHtml(server.source)}</small>` : ""}
-        ${server.error ? `<small>${escapeHtml(server.error)}</small>` : ""}
-      </article>
-    `).join("") : '<div class="utility-empty">No MCP servers configured.</div>';
-  } catch (error) {
-    $("utilityBody").innerHTML = `<div class="utility-empty">${escapeHtml(error.message)}</div>`;
-  }
-}
-
-async function openLogsDialog() {
-  openUtilityDialog("History Browser logs", '<div class="utility-loading">Loading logs...</div>');
-  try {
-    const data = await request("/api/logs");
-    $("utilityBody").innerHTML = `
-      <div class="log-toolbar">
-        <code title="${escapeHtml(data.path || "")}">${escapeHtml(data.path || "history-browser-next.log")}</code>
-        <div>
-          <button id="openLogFile" class="small-button" type="button">Open file</button>
-          <button id="clearLogFile" class="small-button" type="button">Clear</button>
-        </div>
-      </div>
-      <pre class="log-output">${escapeHtml(data.content || "No log entries yet.")}</pre>
-    `;
-    $("openLogFile").onclick = async () => request("/api/logs/open", { method: "POST" });
-    $("clearLogFile").onclick = async () => {
-      await request("/api/logs/clear", { method: "POST" });
-      await openLogsDialog();
-    };
-  } catch (error) {
-    $("utilityBody").innerHTML = `<div class="utility-empty">${escapeHtml(error.message)}</div>`;
-  }
-}
-
-async function uninstallPlugin() {
-  const confirmed = confirm("Uninstall History Browser?\n\nThis only removes the plugin and restores the original opencode command. OpenCode itself will keep working after restart.");
-  if (!confirmed) return;
-  setComposerStatus("Uninstalling History Browser...");
-  try {
-    const data = await request("/api/uninstall", { method: "POST" });
-    openUtilityDialog("History Browser uninstalled", `
-      <div class="utility-empty">
-        <p>${escapeHtml(data.message || "Plugin removed.")}</p>
-        <small>${data.redirectRestored ? "Original opencode command restored." : "No command redirect needed to be restored."}</small>
-        <small>${escapeHtml((data.removed || []).join("\n"))}</small>
-      </div>
-    `);
-    setComposerStatus("Uninstalled. Restart OpenCode to finish.");
-  } catch (error) {
-    setComposerStatus(error.message);
   }
 }
 
@@ -761,7 +627,7 @@ async function abortPrompt(sessionID) {
   setComposerStatus("Stopping OpenCode...");
   try {
     await request(`/api/sessions/${encodeURIComponent(sessionID)}/abort`, { method: "POST" });
-    clearPromptWatcher();
+    promptController.clearPromptWatcher();
     await selectSession(sessionID);
     await loadSessions();
     setComposerStatus("");
@@ -771,47 +637,6 @@ async function abortPrompt(sessionID) {
     $("sendBtn").disabled = false;
     $("sendBtn").textContent = "Send";
   }
-}
-
-function watchPrompt(sessionID, beforeSignature) {
-  clearPromptWatcher();
-  activePromptSessionID = sessionID;
-  $("sendBtn").disabled = false;
-  $("sendBtn").textContent = "Stop";
-  const startedAt = Date.now();
-  let lastSignature = beforeSignature;
-  let stableTicks = 0;
-  let sawAssistant = false;
-  let failureCount = 0;
-  promptWatcher = window.setInterval(async () => {
-    if (current?.id !== sessionID) return clearPromptWatcher();
-    if (Date.now() - startedAt > promptMaxWaitMs) {
-      setComposerStatus("");
-      return clearPromptWatcher();
-    }
-    try {
-      await refreshCurrentSession({ force: true, refreshList: true });
-      failureCount = 0;
-      const signature = messageSignature(current);
-      const finalAssistant = completedAssistantMessage(current, startedAt);
-      if (hasNewAssistantMessage(current, startedAt) || (signature !== beforeSignature && lastRole(current) !== "user")) {
-        sawAssistant = true;
-        setComposerStatus(finalAssistant?.error ? "OpenCode returned an error" : "OpenCode is responding...");
-      }
-      stableTicks = sawAssistant && signature === lastSignature ? stableTicks + 1 : 0;
-      lastSignature = signature;
-      if (finalAssistant || (sawAssistant && stableTicks >= promptStableFallbackTicks)) {
-        setComposerStatus("");
-        clearPromptWatcher();
-      }
-    } catch (error) {
-      failureCount += 1;
-      if (failureCount >= 8) {
-        setComposerStatus(error.message || "Browser sync was interrupted. OpenCode may still be running.");
-        clearPromptWatcher();
-      }
-    }
-  }, promptPollMs);
 }
 
 function startLiveRefresh() {
@@ -835,11 +660,11 @@ async function refreshCurrentSession({ force = false, refreshList = false } = {}
   liveRefreshInFlight = true;
   try {
     const sessionID = current.id;
-    const previous = sessionStateSignature(current);
+    const previous = promptController.sessionStateSignature(current);
     const data = await request(`/api/sessions/${encodeURIComponent(sessionID)}`);
     if (current?.id !== sessionID) return;
     current = data.session;
-    const next = sessionStateSignature(current);
+    const next = promptController.sessionStateSignature(current);
     if (force || previous !== next) {
       renderCurrent();
       renderSessions();
@@ -852,45 +677,35 @@ async function refreshCurrentSession({ force = false, refreshList = false } = {}
   }
 }
 
-function clearPromptWatcher() {
-  if (!promptWatcher) return;
-  window.clearInterval(promptWatcher);
-  promptWatcher = null;
-  activePromptSessionID = null;
-  if (!sending) $("sendBtn").textContent = "Send";
-}
-
 function setComposerStatus(text) {
   $("composerStatus").textContent = text;
 }
 
-function messageSignature(session) {
-  return (session?.messages || [])
-    .slice(-6)
-    .map((message) => `${message.role}:${message.id}:${message.created}:${message.completed || 0}:${message.error || ""}:${(message.text || "").length}:${JSON.stringify(message.activities || []).length}`)
-    .join("|");
-}
+const promptController = createPromptController({
+  $,
+  getCurrent: () => current,
+  isSending: () => sending,
+  promptPollMs,
+  promptMaxWaitMs,
+  promptStableFallbackTicks,
+  refreshCurrentSession,
+  setComposerStatus,
+});
 
-function sessionStateSignature(session) {
-  return `${session?.updated || 0}:${session?.title || ""}:${session?.model || ""}:${session?.tokensInput || 0}:${session?.tokensOutput || 0}:${JSON.stringify(session?.todos || []).length}:${messageSignature(session)}`;
-}
-
-function hasNewAssistantMessage(session, startedAt) {
-  return (session?.messages || []).some((message) => {
-    return message.role !== "user" && message.text && (!message.created || message.created >= startedAt - 1000);
-  });
-}
-
-function lastRole(session) {
-  const messages = (session?.messages || []).filter((message) => message.text || message.extras?.length);
-  return messages[messages.length - 1]?.role || "";
-}
-
-function completedAssistantMessage(session, startedAt) {
-  return [...(session?.messages || [])].reverse().find((message) => {
-    return message.role !== "user" && (message.completed || message.error) && (!message.created || message.created >= startedAt - 1000);
-  });
-}
+const {
+  openLogsDialog,
+  openMcpDialog,
+  openSkillsDialog,
+  renderCommandMenu,
+  runBrowserCommand,
+  uninstallPlugin,
+} = createBrowserDialogs({
+  $,
+  escapeHtml,
+  request,
+  resizePrompt,
+  setComposerStatus,
+});
 
 function resizePrompt() {
   $("promptInput").style.height = "auto";
@@ -914,21 +729,6 @@ async function addImages(files) {
   renderAttachments();
 }
 
-function imageFilesFromClipboard(event) {
-  const files = [...(event.clipboardData?.files || [])].filter((file) => file.type.startsWith("image/"));
-  const itemFiles = [...(event.clipboardData?.items || [])]
-    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
-    .map((item) => item.getAsFile())
-    .filter(Boolean);
-  const seen = new Set();
-  return [...files, ...itemFiles].filter((file) => {
-    const key = `${file.name}:${file.size}:${file.type}:${file.lastModified}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
 function renderAttachments() {
   const list = $("attachmentList");
   list.classList.toggle("visible", attachments.length > 0);
@@ -944,85 +744,6 @@ function renderAttachments() {
       attachments.splice(Number(button.dataset.attachmentIndex), 1);
       renderAttachments();
     });
-  }
-}
-
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(reader.error || new Error("Failed to read image."));
-    reader.readAsDataURL(file);
-  });
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
-function cleanMessageText(value) {
-  return String(value)
-    .replace(/\r\n/g, "\n")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-function renderPathText(text, paths) {
-  const matches = [];
-  const value = String(text || "");
-  const lower = value.toLowerCase();
-  for (const item of paths || []) {
-    const label = String(item?.label || "");
-    if (!label) continue;
-    const needle = label.toLowerCase();
-    let index = lower.indexOf(needle);
-    while (index >= 0) {
-      matches.push({ index, end: index + label.length, item });
-      index = lower.indexOf(needle, index + needle.length);
-    }
-  }
-  matches.sort((a, b) => a.index - b.index || b.end - a.end);
-
-  let cursor = 0;
-  let output = "";
-  for (const match of matches) {
-    if (match.index < cursor) continue;
-    output += escapeHtml(value.slice(cursor, match.index));
-    output += `<button class="openable-path ${escapeHtml(match.item.type)}" type="button" data-open-path="${escapeHtml(match.item.path)}" title="${match.item.type === "directory" ? "Open folder" : "Open file"}">${escapeHtml(value.slice(match.index, match.end))}</button>`;
-    cursor = match.end;
-  }
-  return output + escapeHtml(value.slice(cursor));
-}
-
-function bindPathActions(root) {
-  for (const button of root.querySelectorAll("[data-open-path]")) {
-    button.addEventListener("click", async () => {
-      const path = button.dataset.openPath;
-      try {
-        button.disabled = true;
-        await request("/api/local-path", {
-          method: "POST",
-          body: JSON.stringify({ path, action: "open" }),
-        });
-      } catch (error) {
-        setComposerStatus(error.message);
-      } finally {
-        button.disabled = false;
-      }
-    });
-  }
-}
-
-function readStoredJson(key, fallback) {
-  try {
-    return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
-  } catch {
-    return fallback;
   }
 }
 
@@ -1090,9 +811,9 @@ $("titleInput").addEventListener("keydown", (event) => {
   if (event.key === "Enter") rename();
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key !== "Escape" || !promptWatcher) return;
+  if (event.key !== "Escape" || !promptController.isWatching()) return;
   event.preventDefault();
-  abortPrompt(activePromptSessionID);
+  abortPrompt(promptController.getActivePromptSessionID());
 });
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".model-picker")) $("modelMenu").classList.remove("visible");

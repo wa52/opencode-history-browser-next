@@ -1,11 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  buildBalancedSnapshot,
-  inferPluginName,
-  inferSkillScope,
-  normalizeMcpServer,
-} from "../tui.js";
+import { buildBalancedSnapshot } from "../lib/browser-snapshot.js";
+import { inferPluginName, inferSkillScope, normalizeMcpServer } from "../lib/browser-diagnostics.js";
 
 test("infers plugin metadata for bundled and system skills", () => {
   assert.equal(
