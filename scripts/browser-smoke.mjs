@@ -14,7 +14,8 @@ const url = process.argv[2] || await startStandalone();
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  await page.goto(url, { waitUntil: "domcontentloaded" });
+  const bareUrl = url.replace(/\?.*$/, "");
+  await page.goto(bareUrl, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(".shell");
 
   assert.equal(await page.title(), "OpenCode History Next");
@@ -45,6 +46,9 @@ try {
   assert.match((await page.locator("#utilityTitle").textContent()) || "", /mcp/i);
   await page.locator("#utilityClose").click();
 
+  await page.locator("#newChatBtn").click();
+  await page.waitForFunction(() => document.getElementById("detailStatus")?.textContent?.trim() === "History");
+
   const screenshot = join(tmpdir(), "opencode-history-browser-next-smoke.png");
   await page.screenshot({ path: screenshot, fullPage: true });
   console.log(JSON.stringify({ ok: true, title: await page.title(), screenshot }));
@@ -63,7 +67,7 @@ async function startStandalone() {
     cwd: join(scriptDir, ".."),
     env: {
       ...process.env,
-      OPENCODE_HISTORY_BROWSER_IDLE_MS: "1000",
+      OPENCODE_HISTORY_BROWSER_IDLE_MS: "15000",
       OPENCODE_HISTORY_BROWSER_NO_OPEN: "1",
     },
     stdio: "ignore",

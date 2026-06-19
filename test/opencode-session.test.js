@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createSession, sessionWorkspaceRoot } from "../lib/opencode-session.js";
+import { createSession, getSession, sessionWorkspaceRoot } from "../lib/opencode-session.js";
 
 test("createSession binds explicit workspace root into query and metadata", async () => {
   let received;
@@ -45,4 +45,49 @@ test("sessionWorkspaceRoot prefers explicit metadata and falls back to directory
     }),
     "D:/workspace/fallback",
   );
+});
+
+test("getSession keeps browser rendering alive when message errors exist", async () => {
+  const api = {
+    client: {
+      session: {
+        get() {
+          return Promise.resolve({
+            data: {
+              id: "ses_1",
+              title: "Chat",
+              directory: "D:/workspace/project-a",
+              time: { created: 1, updated: 2 },
+              metadata: { workspaceRoot: "D:/workspace/project-a" },
+              tokens: { input: 0, output: 0 },
+              summary: {},
+            },
+          });
+        },
+        messages() {
+          return Promise.resolve({
+            data: [{
+              info: {
+                id: "msg_1",
+                role: "assistant",
+                error: { message: "MessageAbortedError: Aborted" },
+                time: { created: 3, completed: 4 },
+              },
+              parts: [],
+            }],
+          });
+        },
+        todo() {
+          return Promise.resolve({ data: [] });
+        },
+      },
+    },
+  };
+
+  const session = await getSession(api, "ses_1");
+
+  assert.equal(session.id, "ses_1");
+  assert.equal(session.messages.length, 1);
+  assert.equal(session.messages[0].aborted, true);
+  assert.equal(session.messages[0].error, "");
 });

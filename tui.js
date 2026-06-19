@@ -250,7 +250,11 @@ async function serveStatic(response, requestPath) {
     return;
   }
   const content = await readFile(target);
-  response.writeHead(200, { "content-type": mimeType(target), "cache-control": "no-store" });
+  response.writeHead(200, {
+    "content-type": mimeType(target),
+    "cache-control": "no-store",
+    "set-cookie": `history_browser_token=${serverToken}; Path=/; SameSite=Strict`,
+  });
   response.end(content);
 }
 
@@ -299,7 +303,12 @@ function mimeType(path) {
 function isAuthorized(request, url) {
   if (!serverToken) return false;
   const header = request.headers["x-history-browser-token"];
-  return header === serverToken || url.searchParams.get("token") === serverToken;
+  const cookie = String(request.headers.cookie || "")
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith("history_browser_token="))
+    ?.slice("history_browser_token=".length);
+  return header === serverToken || url.searchParams.get("token") === serverToken || cookie === serverToken;
 }
 
 function markBrowserSeen() {
