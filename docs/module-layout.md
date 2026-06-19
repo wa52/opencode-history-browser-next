@@ -13,7 +13,13 @@ This plugin is now split by function instead of keeping most server logic inside
   - plugin entrypoint
   - browser HTTP route wiring
   - OpenCode command registration
-  - launcher / redirect / uninstall orchestration
+  - browser host lifecycle
+  - OpenCode terminal handoff
+
+- `lib/browser-install.js`
+  - Windows browser launcher generation
+  - `opencode` command redirect install / restore
+  - plugin uninstall orchestration
 
 - `lib/opencode-session.js`
   - session list fallback
@@ -88,6 +94,6 @@ The current split makes `tui.js` the coordination layer, while business logic mo
 
 The next clean split, if we keep going, should be:
 
-1. move HTTP route handlers into `lib/browser-routes.js`
-2. move launcher / redirect / uninstall logic into `lib/browser-install.js`
-3. split `public/app.js` into session pane, chat pane, and control pane modules
+1. split `public/app.js` into session pane, chat pane, and control pane modules
+2. isolate browser host state from `tui.js` into a small server controller
+3. move browser utility command handling into its own front-end module
