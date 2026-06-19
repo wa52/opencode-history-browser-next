@@ -55,9 +55,10 @@ try {
 } finally {
   await browser.close();
   if (launched?.exitCode === null) {
+    launched.kill();
     await Promise.race([
       new Promise((resolve) => launched.once("exit", resolve)),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("Standalone browser did not shut down after idle.")), 10_000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Standalone browser did not stop after the smoke test.")), 10_000)),
     ]);
   }
 }

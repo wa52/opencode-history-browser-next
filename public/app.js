@@ -21,6 +21,9 @@ let sending = false;
 let liveRefreshTimer = null;
 let liveRefreshInFlight = false;
 let liveRefreshTicks = 0;
+let heartbeatTimer = null;
+let permissionTimer = null;
+let questionTimer = null;
 let modelOptions = [];
 const storagePrefix = "historyBrowserNext:";
 let selectedModel = readStoredJson(`${storagePrefix}model`, null);
@@ -33,6 +36,8 @@ const apiToken = new URLSearchParams(window.location.search).get("token") || "";
 const promptPollMs = 1500;
 const promptMaxWaitMs = 10 * 60 * 1000;
 const promptStableFallbackTicks = Math.ceil((3 * 60 * 1000) / promptPollMs);
+let connectionClosed = false;
+const disconnectedMessage = "OpenCode CLI is closed. Reopen the browser from a running OpenCode window.";
 
 const fmtTime = (ms) => (ms ? new Date(ms).toLocaleString() : "Unknown time");
 
@@ -43,18 +48,51 @@ const shortPath = (path) => {
 };
 
 const request = async (url, options) => {
+  if (connectionClosed) throw new Error(disconnectedMessage);
   const target = apiToken && url.startsWith("/api/") ? `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(apiToken)}` : url;
-  const res = await fetch(target, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(apiToken ? { "X-History-Browser-Token": apiToken } : {}),
-    },
-    ...options,
-  });
-  const data = await res.json();
+  let res;
+  try {
+    res = await fetch(target, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiToken ? { "X-History-Browser-Token": apiToken } : {}),
+      },
+      ...options,
+    });
+  } catch {
+    setDisconnectedState(disconnectedMessage);
+    throw new Error(disconnectedMessage);
+  }
+  let data = {};
+  try {
+    data = await res.json();
+  } catch {}
   if (!res.ok) throw new Error(data.error || "Request failed");
   return data;
 };
+
+function setDisconnectedState(message = disconnectedMessage) {
+  if (connectionClosed) return;
+  connectionClosed = true;
+  stopLiveRefresh();
+  if (heartbeatTimer) window.clearInterval(heartbeatTimer);
+  if (permissionTimer) window.clearInterval(permissionTimer);
+  if (questionTimer) window.clearInterval(questionTimer);
+  heartbeatTimer = null;
+  permissionTimer = null;
+  questionTimer = null;
+  try {
+    promptController.clearPromptWatcher();
+  } catch {}
+  $("promptInput").disabled = true;
+  $("attachBtn").disabled = true;
+  $("sendBtn").disabled = true;
+  $("sendBtn").textContent = "Offline";
+  setComposerStatus(message);
+  if (!current) {
+    $("empty").innerHTML = `<div class="new-chat-box"><div class="new-chat-title">OpenCode offline</div><p>${escapeHtml(message)}</p></div>`;
+  }
+}
 
 async function loadSessions() {
   const q = $("search").value.trim();
@@ -754,6 +792,7 @@ function renderAttachments() {
 }
 
 function heartbeat() {
+  if (connectionClosed) return;
   request("/api/heartbeat", { method: "POST" }).catch(() => {});
 }
 
@@ -831,9 +870,15 @@ window.addEventListener("pagehide", notifyBrowserClose);
 
 applyTheme();
 heartbeat();
-window.setInterval(heartbeat, 10000);
-window.setInterval(() => loadPermissions().catch(() => {}), promptPollMs);
-window.setInterval(() => loadQuestions().catch(() => {}), promptPollMs);
+heartbeatTimer = window.setInterval(heartbeat, 10000);
+permissionTimer = window.setInterval(() => {
+  if (connectionClosed) return;
+  loadPermissions().catch(() => {});
+}, promptPollMs);
+questionTimer = window.setInterval(() => {
+  if (connectionClosed) return;
+  loadQuestions().catch(() => {});
+}, promptPollMs);
 renderCurrent();
 loadSessions().catch((error) => {
   $("empty").innerHTML = `<div class="new-chat-box"><div class="new-chat-title">Load failed</div><p>${escapeHtml(error.message)}</p></div>`;

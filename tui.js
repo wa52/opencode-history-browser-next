@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ import { randomBytes } from "node:crypto";
 import { clearLogs, logFile, readLogs, writeLog } from "./log.js";
 import {
   KV_PREFIX,
+  LOCK_FILE,
   PLUGIN_ID,
   PLUGIN_TITLE,
 } from "./lib/identity.js";
@@ -53,8 +54,8 @@ let requestHandler;
 async function tui(api) {
   if (!cliMode) {
     registerShutdownHandlers();
-    ensureBrowserLauncher({ root, writeLog }).catch((error) => writeLog("error", "launcher.install.failed", { error }));
     ensureCommandRedirect({ writeLog }).catch((error) => writeLog("error", "redirect.install.failed", { error }));
+    ensureBrowserLauncher({ root, writeLog }).catch((error) => writeLog("error", "launcher.install.failed", { error }));
   }
   const start = async () => {
     serverUrl = await ensureServer(api);
@@ -167,6 +168,7 @@ async function ensureServer(api) {
   const port = await listenOnAvailablePort(server, 8765);
   serverToken = randomBytes(18).toString("base64url");
   serverUrl = `http://127.0.0.1:${port}/?token=${serverToken}`;
+  await writeBrowserLock(serverUrl);
   await writeLog("info", "browser.server.started", { port, headless: Boolean(api.headless) });
   startIdleMonitor(api);
   return serverUrl;
@@ -346,6 +348,7 @@ function closeServer() {
   serverUrl = undefined;
   serverToken = undefined;
   lastBrowserSeen = 0;
+  clearBrowserLock().catch(() => {});
 }
 
 function registerShutdownHandlers() {
@@ -433,6 +436,19 @@ async function startBrowserHost(api) {
   const url = await ensureServer(api);
   if (process.env.OPENCODE_HISTORY_BROWSER_NO_OPEN !== "1") openUrl(url);
   return { url, close: closeServer };
+}
+
+async function writeBrowserLock(url) {
+  await mkdir(dirname(LOCK_FILE), { recursive: true });
+  await writeFile(LOCK_FILE, JSON.stringify({ url, pid: process.pid }), "utf8");
+}
+
+async function clearBrowserLock() {
+  try {
+    const value = JSON.parse(await readFile(LOCK_FILE, "utf8"));
+    if (value?.pid !== process.pid) return;
+    await unlink(LOCK_FILE);
+  } catch {}
 }
 
 export {
